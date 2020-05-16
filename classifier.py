@@ -1,11 +1,6 @@
-# python 3.5+ with tensorflow 1.10rc
-
-import tensorflow
-if tensorflow.__version__ >= '2.0':
-    import tensorflow.compat.v1 as tf
-    tf.disable_eager_execution()
-else:
-    import tensorflow as tf
+# A part of hualiaoshi
+# test of zhishi chuandi
+import tensorflow.compat.v1 as tf
 import numpy as np
 import glob
 import platform
@@ -13,7 +8,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import os
 
-
+tf.disable_eager_execution()
 plt.rcParams['font.sans-serif']=['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -204,7 +199,7 @@ def encode(x):
         layers.append(vec_)
         fc_ = tf.layers.dense(
             layers[-1],
-            64,
+            256,
             activation=tf.nn.leaky_relu,
             use_bias=True,
             kernel_initializer=make_initializer()
@@ -220,7 +215,7 @@ def encode(x):
         layers.append(fc_)
         fc_ = tf.layers.dense(
             layers[-1],
-            64,
+            256,
             activation=tf.nn.leaky_relu,
             use_bias=True,
             kernel_initializer=make_initializer()
@@ -235,6 +230,22 @@ def decode(y):
     name = 'decoder'
     layers = [y]
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+        fc_ = tf.layers.dense(
+            layers[-1],
+            1024,
+            activation=tf.nn.leaky_relu,
+            use_bias=True,
+            kernel_initializer=make_initializer()
+        )
+        layers.append(fc_)
+        fc_ = tf.layers.dense(
+            layers[-1],
+            256,
+            activation=tf.nn.leaky_relu,
+            use_bias=True,
+            kernel_initializer=make_initializer()
+        )
+        layers.append(fc_)
         fc_ = tf.layers.dense(
             layers[-1],
             8192,
@@ -478,7 +489,7 @@ def make_loss(x1, y1, z1, x2, y2, z2):
     loss_chongjian = tf.reduce_mean(tf.abs(x1 - y1)) \
                      + tf.reduce_mean(tf.abs(x2 - y2)) / 2.0
     loss_lianxu = make_unified_loss(z1, z2)
-    alpha = 1 - tf.minimum(loss_chongjian, 1.0)
+    alpha = 1 - tf.minimum(5.0*loss_chongjian, 1.0)
     alpha = tf.stop_gradient(alpha)
     loss = loss_chongjian * (1 - alpha) + loss_lianxu * alpha
     return loss, loss_chongjian, loss_lianxu
@@ -495,37 +506,38 @@ def get_ticker():
 
 
 def load_dataset(path):
-    episodes = glob.glob(path + '/*')
+    fixed_size = [256, 256]
+    classes = glob.glob(path + '/*')
     data = {}
-    data['x'] = []
-    data['episodes'] = []
+    data['images'] = []
+    data['classes'] = []
     data['sizes'] = []
-    for i in range(len(episodes)):
-        if not os.path.isdir(episodes[i]):
+    for i in range(len(classes)):
+        if not os.path.isdir(classes[i]):
             continue
         if __windows__():
-            seg = episodes[i].rfind('\\')
-            data['episodes'].append(episodes[i][seg + 1:])
+            seg = classes[i].rfind('\\')
+            data['classes'].append(classes[i][seg + 1:])
         else:
-            seg = episodes[i].rfind('/')
-            data['episodes'].append(episodes[i][seg + 1:])
-        files = glob.glob(episodes[i] + '/*.jpg')
+            seg = classes[i].rfind('/')
+            data['classes'].append(classes[i][seg + 1:])
+        files = glob.glob(classes[i] + '/*.jpg')
         # print(files)
-        images = [np.array(Image.open(fp), np.float32) / 255.0 for fp in files]
-        print("%16s:\t%d" % (data['episodes'][-1], len(images)))
-        data['x'].extend(images)
+        images = [np.array(Image.open(fp).resize(fixed_size), np.float32) / 255.0 for fp in files]
+        print("%16s:\t%d" % (data['classes'][-1], len(images)))
+        data['images'].extend(images)
         data['sizes'].append(len(images))
     return data
 
 
 def check_dataset():
-    data = load_dataset('../../Datasets/shikonglianxu/episodes')
-    print('图片总量: %d' % len(data['x']))
-    print('场景个数: %d' % len(data['episodes']))
-    print('图片尺寸: %s' % str(data['x'][0].shape))
-    assert len(data['episodes']) == len(data['sizes'])
-    for i in range(len(data['episodes'])):
-        print('%16s:%8d' % (data['episodes'][i], data['sizes'][i]))
+    data = load_dataset('../../Datasets/ClassifierEstimator/train/')
+    print('图片总量: %d' % len(data['images']))
+    print('类别个数: %d' % len(data['classes']))
+    print('图片尺寸: %s' % str(data['images'][0].shape))
+    assert len(data['classes']) == len(data['sizes'])
+    for i in range(len(data['classes'])):
+        print('%16s:%8d' % (data['classes'][i], data['sizes'][i]))
 
 
 def train(ckpt_dir, data_path, log_dir, max_epoc=1000):
@@ -565,7 +577,7 @@ def train(ckpt_dir, data_path, log_dir, max_epoc=1000):
         # training loop
         data = load_dataset(data_path)
         for epoc in range(max_epoc):
-            episode_id = int(np.random.rand() < 0.5)
+            episode_id = np.random.randint(0, len(data['sizes']))
             offset = 0
             for _epid in range(episode_id):
                 offset += data['sizes'][_epid]
@@ -614,7 +626,7 @@ def predict(ckpt_dir, data_path):
             plt.clf()
             plt.title('图片#%06d' % i)
             plt.imshow(y_2)
-            plt.pause(1)
+            plt.pause(0.01)
 
 
 if __name__ == '__main__':
@@ -622,10 +634,10 @@ if __name__ == '__main__':
     check()
     check_dataset()
 
-    # train('../../Models/AE/',  # model saving path
-    #       '../../Datasets/shikonglianxu/episodes',  # dataset loading path
-    #       '../../Logs/AE/',  # logging path
+    # train('../../Models/ClassifierEstimator/',  # model saving path
+    #       '../../Datasets/ClassifierEstimator/train/',  # dataset loading path
+    #       '../../Logs/ClassifierEstimator/',  # logging path
     #       500)  # the maximum number of epoch to run
 
-    predict('../../Models/AE/', '../../Datasets/shikonglianxu/episodes')
+    # predict('../../Models/AE/', '../../Datasets/shikonglianxu/episodes')
     print('===================================')
