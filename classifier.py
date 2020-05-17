@@ -1,6 +1,10 @@
-# A part of hualiaoshi
-# test of zhishi chuandi
-import tensorflow.compat.v1 as tf
+# classifier
+import tensorflow
+if tensorflow.__version__ >= '2.0':
+    import tensorflow.compat.v1 as tf
+    tf.disable_eager_execution()
+else:
+    import tensorflow as tf
 import numpy as np
 import glob
 import platform
@@ -8,7 +12,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import os
 
-tf.disable_eager_execution()
+
 plt.rcParams['font.sans-serif']=['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -197,63 +201,63 @@ def encode(x):
         # convert into hash code with 8192 units
         vec_ = tf.layers.flatten(layers[-1])
         layers.append(vec_)
-        fc_ = tf.layers.dense(
-            layers[-1],
-            256,
-            activation=tf.nn.leaky_relu,
-            use_bias=True,
-            kernel_initializer=make_initializer()
-        )
-        layers.append(fc_)
-        fc_ = tf.layers.dense(
-            layers[-1],
-            1024,
-            activation=tf.nn.leaky_relu,
-            use_bias=False,
-            kernel_initializer=make_initializer()
-        )
-        layers.append(fc_)
-        fc_ = tf.layers.dense(
-            layers[-1],
-            256,
-            activation=tf.nn.leaky_relu,
-            use_bias=True,
-            kernel_initializer=make_initializer()
-        )
-        layers.append(fc_)
+        # fc_ = tf.layers.dense(
+        #     layers[-1],
+        #     256,
+        #     activation=tf.nn.leaky_relu,
+        #     use_bias=True,
+        #     kernel_initializer=make_initializer()
+        # )
+        # layers.append(fc_)
+        # fc_ = tf.layers.dense(
+        #     layers[-1],
+        #     1024,
+        #     activation=tf.nn.leaky_relu,
+        #     use_bias=False,
+        #     kernel_initializer=make_initializer()
+        # )
+        # layers.append(fc_)
+        # fc_ = tf.layers.dense(
+        #     layers[-1],
+        #     256,
+        #     activation=tf.nn.leaky_relu,
+        #     use_bias=True,
+        #     kernel_initializer=make_initializer()
+        # )
+        # layers.append(fc_)
         return layers
 
 
-def decode(y):
-    if len(y.shape.as_list()) != 2:
+def decode(z):
+    if len(z.shape.as_list()) != 2:
         raise AssertionError('decode() expects a 2D tensor input!')
     name = 'decoder'
-    layers = [y]
+    layers = [z]
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
-        fc_ = tf.layers.dense(
-            layers[-1],
-            1024,
-            activation=tf.nn.leaky_relu,
-            use_bias=True,
-            kernel_initializer=make_initializer()
-        )
-        layers.append(fc_)
-        fc_ = tf.layers.dense(
-            layers[-1],
-            256,
-            activation=tf.nn.leaky_relu,
-            use_bias=True,
-            kernel_initializer=make_initializer()
-        )
-        layers.append(fc_)
-        fc_ = tf.layers.dense(
-            layers[-1],
-            8192,
-            activation=tf.nn.leaky_relu,
-            use_bias=True,
-            kernel_initializer=make_initializer()
-        )
-        layers.append(fc_)
+        # fc_ = tf.layers.dense(
+        #     layers[-1],
+        #     1024,
+        #     activation=tf.nn.leaky_relu,
+        #     use_bias=True,
+        #     kernel_initializer=make_initializer()
+        # )
+        # layers.append(fc_)
+        # fc_ = tf.layers.dense(
+        #     layers[-1],
+        #     256,
+        #     activation=tf.nn.leaky_relu,
+        #     use_bias=True,
+        #     kernel_initializer=make_initializer()
+        # )
+        # layers.append(fc_)
+        # fc_ = tf.layers.dense(
+        #     layers[-1],
+        #     8192,
+        #     activation=tf.nn.leaky_relu,
+        #     use_bias=True,
+        #     kernel_initializer=make_initializer()
+        # )
+        # layers.append(fc_)
         # convert into a 4D tensor
         base = tf.reshape(layers[-1], shape=[-1, 8, 8, 128])
         layers.append(base)
@@ -445,54 +449,74 @@ def decode(y):
         return layers
 
 
+def classify(z, n_classes):
+    layers = [z]
+    fc_ = tf.layers.dense(
+        layers[-1],
+        n_classes,
+        activation=None,
+        use_bias=False,
+        kernel_initializer=make_initializer()
+    )
+    layers.append(fc_)
+    layers.append(tf.nn.softmax(fc_))
+    return layers
+
+
 def check_encoder():
     x = tf.placeholder(dtype=tf.float32, shape=[None, 256, 256, 3])
     layers = encode(x)
-    y = layers[-1]
-    print(y.shape.as_list())
-    print('encode(): pass')
+    z= layers[-1]
+    print(z.shape.as_list())
+    print('encoder: pass')
 
 
 def check_decoder():
-    y = tf.placeholder(dtype=tf.float32, shape=[None, 16])
-    layers = decode(y)
-    x = layers[-1]
-    print(x.shape.as_list())
-    print('decode(): pass')
+    z = tf.placeholder(dtype=tf.float32, shape=[None, 8192])
+    layers = decode(z)
+    x_r = layers[-1]
+    print(x_r.shape.as_list())
+    print('decoder: pass')
+
+
+def check_classifier():
+    z = tf.placeholder(dtype=tf.float32, shape=[None, 8192])
+    layers = classify(z, 2)
+    y = layers[-1]
+    print(y.shape.as_list())
+    print('classifier: pass')
 
 
 def check():
     check_encoder()
     check_decoder()
+    check_classifier()
 
 
-def build_network():
-    # x: input RGB image,
-    # z: latent code for RGB image,
-    # y: output RGB image
+def build_network(n_classes, inference_only=True):
+    # x: input RGB image
+    # z: latent code for RGB image
+    # y: output label (association)
+    # x_r : output reconstruction of x(reconstruction)
     x = tf.placeholder(dtype=tf.float32, shape=[None, 256, 256, 3])
     encoder = encode(x)
     z = encoder[-1]
-    decoder = decode(z)
-    y = decoder[-1]
-    return x, y, z
+    classifier = classify(z, n_classes)
+    if inference_only:
+        y = classifier[-1]
+    else:
+        y = classifier[-2]
+    z_no_grad = tf.stop_gradient(z)
+    decoder = decode(z_no_grad)
+    x_r = decoder[-1]
+    return x, y, z, x_r
 
 
-def make_unified_loss(a, b):
-    # norm of a and b should be ignored in the loss
-    a_unified = a / tf.sqrt(tf.reduce_sum(a * a, axis=-1) + 1E-7)
-    b_unified = b / tf.sqrt(tf.reduce_sum(b * b, axis=-1) + 1E-7)
-    return tf.reduce_mean(tf.abs(a_unified - b_unified))
-
-
-def make_loss(x1, y1, z1, x2, y2, z2):
-    loss_chongjian = tf.reduce_mean(tf.abs(x1 - y1)) \
-                     + tf.reduce_mean(tf.abs(x2 - y2)) / 2.0
-    loss_lianxu = make_unified_loss(z1, z2)
-    alpha = 1 - tf.minimum(5.0*loss_chongjian, 1.0)
-    alpha = tf.stop_gradient(alpha)
-    loss = loss_chongjian * (1 - alpha) + loss_lianxu * alpha
-    return loss, loss_chongjian, loss_lianxu
+def make_loss(x, y, x_r, y_g):
+    loss_ass = tf.losses.softmax_cross_entropy(y_g, y)
+    loss_rec = tf.reduce_mean(tf.abs(x - x_r))
+    loss = loss_rec + loss_ass
+    return loss, loss_ass, loss_rec
 
 
 def get_ticker():
@@ -523,7 +547,23 @@ def load_dataset(path):
             data['classes'].append(classes[i][seg + 1:])
         files = glob.glob(classes[i] + '/*.jpg')
         # print(files)
-        images = [np.array(Image.open(fp).resize(fixed_size), np.float32) / 255.0 for fp in files]
+        images = []
+        for fp in files:
+            im_ = Image.open(fp).resize(fixed_size)
+            im_ = np.array(im_, np.float32) / 255.0
+            if len(im_.shape) == 1: # duplicate gray channels into RGB ones
+                im_ = np.stack([im_, im_, im_], axis=-1)
+                images.append(im_)
+            elif len(im_.shape) == 3:
+                if im_.shape[2] == 4: # rgba, kick off alpha channel
+                    im_ = im_[:, :, 0:3]
+                    images.append(im_)
+                elif im_.shape[2] == 3:
+                    images.append(im_)
+                else:
+                    raise ValueError("image has invalid format: %s" % fp)
+            else:
+                raise ValueError("image has invalid format: %s" % fp)
         print("%16s:\t%d" % (data['classes'][-1], len(images)))
         data['images'].extend(images)
         data['sizes'].append(len(images))
@@ -531,7 +571,7 @@ def load_dataset(path):
 
 
 def check_dataset():
-    data = load_dataset('../../Datasets/ClassifierEstimator/train/')
+    data = load_dataset('../Datasets/ClassifierEstimator/train/')
     print('图片总量: %d' % len(data['images']))
     print('类别个数: %d' % len(data['classes']))
     print('图片尺寸: %s' % str(data['images'][0].shape))
@@ -541,21 +581,26 @@ def check_dataset():
 
 
 def train(ckpt_dir, data_path, log_dir, max_epoc=1000):
+    print('Loading dataset...')
+    data = load_dataset(data_path)
+    print('dataset loaded!')
+
     model_save_freq = 1 # unit: epoch
     with tf.Graph().as_default():
         step, next = get_ticker()
-        x1, y1, z1 = build_network()
-        x2, y2, z2 = build_network()
-        vars = tf.trainable_variables()
-        for v in vars:
+        n_classes = len(data['classes'])
+        x, y, z, x_r = build_network(n_classes, False)
+        vars_ = tf.trainable_variables()
+        for v in vars_:
             print("%24s:%18s" % (v.name, str(v.shape)))
-        loss, loss_chongjian, loss_lianxu = \
-            make_loss(x1, y1, z1, x2, y2, z2)
+        # groundtruth label
+        y_g = tf.placeholder(dtype=tf.float32, shape=[None, n_classes])
+        loss, loss_ass, loss_rec = make_loss(x, y, x_r, y_g)
         opt = tf.train.AdamOptimizer(learning_rate=1e-4)\
             .minimize(loss, global_step=step)
         tf.summary.scalar('Total Loss', loss)
-        tf.summary.scalar('Reconstruction Loss', loss_chongjian)
-        tf.summary.scalar('Continuity Loss', loss_lianxu)
+        tf.summary.scalar('Association Loss', loss_ass)
+        tf.summary.scalar('Reconstruction Loss', loss_rec)
         logs = tf.summary.merge_all()
         # add IO
         logger = tf.summary.FileWriter(log_dir, tf.get_default_graph())
@@ -575,24 +620,26 @@ def train(ckpt_dir, data_path, log_dir, max_epoc=1000):
             sess.run(tf.global_variables_initializer())
             print("模型参数已经初始化完成。")
         # training loop
-        data = load_dataset(data_path)
         for epoc in range(max_epoc):
-            episode_id = np.random.randint(0, len(data['sizes']))
-            offset = 0
-            for _epid in range(episode_id):
-                offset += data['sizes'][_epid]
-            size_ = data['sizes'][episode_id]
-            train_idx = np.random.permutation(size_-1) + offset
-            for idx in train_idx:
+            for itr in range(len(data['images'])):
+                # rebalance the samples
+                class_id = np.random.randint(0, len(data['classes']))
+                offset = 0
+                for _cid in range(class_id):
+                    offset += data['sizes'][_cid]
+                size_ = data['sizes'][class_id]
+                train_idx = np.random.randint(size_) + offset
+                y_g_ = np.zeros([len(data['classes'])], dtype=np.float32)
+                y_g_[class_id] = 1.0
                 # step is updated by the Adam Optimizer!!!
-                _, loss_, step_, logs_ = sess.run(
-                    [opt, loss, step, logs],
+                _, loss_, loss_ass_, loss_rec_, step_, logs_ = sess.run(
+                    [opt, loss, loss_ass, loss_rec, step, logs],
                     feed_dict={
-                        x1: np.expand_dims(data['x'][idx], 0),
-                        x2: np.expand_dims(data['x'][idx+1], 0)
+                        x: np.expand_dims(data['images'][train_idx], 0),
+                        y_g: np.expand_dims(y_g_, 0)
                     })
-                print('step#%6d\tepoch#%6d\titer#%6d\tloss=%5.5f' %
-                      (step_, epoc, idx, loss_))
+                print('step#%6d epoch#%6d iter#%6d loss=%5.5f loss_ass=%5.5f loss_rec=%5.5f'%
+                      (step_, epoc, itr, loss_, loss_ass_, loss_rec_))
                 logger.add_summary(logs_, global_step=step_)
             if (epoc + 1) % model_save_freq == 0:
                 saver.save(sess, ckpt_dir, global_step=step_)
@@ -600,8 +647,12 @@ def train(ckpt_dir, data_path, log_dir, max_epoc=1000):
 
 
 def predict(ckpt_dir, data_path):
+    print('Loading dataset...')
+    data = load_dataset(data_path)
+    print('dataset loaded!')
+    n_classes = len(data['classes'])
     with tf.Graph().as_default():
-        x, y, z = build_network()
+        x, y, z, x_r = build_network(n_classes)
         sess = tf.Session()
         saver = tf.train.Saver()
         ckpt_file = tf.train.latest_checkpoint(ckpt_dir)
@@ -611,22 +662,35 @@ def predict(ckpt_dir, data_path):
         else:
             print("未找到模型参数文件，无法加载模型，推断终止！")
             return
-        # training loop
-        data = load_dataset(data_path)
-        for i in range(2, len(data['x'])-2):
-            z_1 = sess.run(z, feed_dict={x: np.expand_dims(data['x'][i-2], 0)})
-            z_2 = sess.run(z, feed_dict={x: np.expand_dims(data['x'][i], 0)})
-            z_3 = sess.run(z, feed_dict={x: np.expand_dims(data['x'][i+2], 0)})
-            y_2 = sess.run(y, feed_dict={z: z_2})
-            z_2_i = (z_1 + z_3) / 2.0
-            y_2_i = sess.run(y, feed_dict={z: z_2_i})
-            y_2 = np.maximum(np.minimum(y_2[0], 1.0), 0.0)
-            y_2_i = np.maximum(np.minimum(y_2_i[0], 1.0), 0.0)
-            y_2 = np.concatenate((data['x'][i], y_2, y_2_i), axis=1)
-            plt.clf()
-            plt.title('图片#%06d' % i)
-            plt.imshow(y_2)
-            plt.pause(0.01)
+        # check accuracy
+        correct_num = 0.0
+        rec_err_pos = 0.0
+        rec_err_neg = 0.0
+        for class_id in range(len(data['classes'])):
+            offset = 0
+            for _cid in range(class_id):
+                offset += data['sizes'][_cid]
+            for _id in range(data['sizes'][class_id]):
+                _id += offset
+                x_ = data['images'][_id]
+                y_, x_r_ = sess.run([y, x_r], feed_dict={x: np.expand_dims(x_, 0)})
+                if np.argmax(y_[0]) == class_id:
+                    correct_num += 1.0
+                    rec_err_pos += np.mean(np.abs(x_ - x_r_[0]))
+                else:
+                    rec_err_neg += np.mean(np.abs(x_ - x_r_[0]))
+                # y_ = np.maximum(np.minimum(y_[0], 1.0), 0.0)
+                # y_2_i = np.maximum(np.minimum(y_2_i[0], 1.0), 0.0)
+                # y_2 = np.concatenate((data['x'][i], y_2, y_2_i), axis=1)
+                # plt.clf()
+                # plt.title('图片#%06d' % i)
+                # plt.imshow(y_2)
+                # plt.pause(0.01)
+        print('Test Accuracy: %6.3f' % (correct_num / len(data['images'])))
+        print('Reconstruction Error on Positive Samples: %6.3f' % (rec_err_pos / correct_num))
+        correct_num = len(data['images']) - correct_num
+        if correct_num > 0:
+            print('Reconstruction Error on Negative Samples: %6.3f' % (rec_err_neg / correct_num))
 
 
 if __name__ == '__main__':
@@ -634,10 +698,10 @@ if __name__ == '__main__':
     check()
     check_dataset()
 
-    # train('../../Models/ClassifierEstimator/',  # model saving path
-    #       '../../Datasets/ClassifierEstimator/train/',  # dataset loading path
-    #       '../../Logs/ClassifierEstimator/',  # logging path
+    # train('../Models/ClassifierEstimator/',  # model saving path
+    #       '../Datasets/ClassifierEstimator/train/',  # dataset loading path
+    #       '../Logs/ClassifierEstimator/',  # logging path
     #       500)  # the maximum number of epoch to run
 
-    # predict('../../Models/AE/', '../../Datasets/shikonglianxu/episodes')
+    predict('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/test/')
     print('===================================')
