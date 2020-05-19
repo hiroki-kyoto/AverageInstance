@@ -8,13 +8,15 @@ import imagenet_classes as imagenet
 def main():
     mobilenet = models.mobilenet_v2(pretrained=True)
     mobilenet.eval()
-    im = Image.open("C:/Users/Administrator/Desktop/微信图片_20200518173318.png")
+    im = Image.open("./demo/test2.png")
     im = im.resize([224, 224])
     x = np.array(im, dtype=np.float32)/255.0
     if len(x.shape)==1: # gray image
         x = np.stack([x, x, x], axis=-1)
     elif len(x.shape)==3 and x.shape[2]==4: # RGBA image
         x = x[:, :, 0:3]
+    elif len(x.shape)==3 and x.shape[2]==3: # RGB image
+        pass
     else:
         print('Error: invalid input image format!')
         exit(-1)
