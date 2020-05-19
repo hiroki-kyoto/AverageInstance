@@ -597,7 +597,7 @@ def train(ckpt_dir, data_path, log_dir, max_epoc=1000):
         y_g = tf.placeholder(dtype=tf.float32, shape=[None, n_classes])
         loss, loss_ass, loss_rec = make_loss(x, y, x_r, y_g)
         opt = tf.train.AdamOptimizer(learning_rate=1e-4)\
-            .minimize(loss, global_step=step)
+            .minimize(loss_rec, global_step=step)
         tf.summary.scalar('Total Loss', loss)
         tf.summary.scalar('Association Loss', loss_ass)
         tf.summary.scalar('Reconstruction Loss', loss_rec)
