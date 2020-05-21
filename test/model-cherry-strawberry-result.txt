@@ -1,0 +1,6 @@
+Test Accuracy:  0.785
+Reconstruction Error on Positive Samples:  0.088
+Reconstruction Stddev on Positive Samples:  0.054
+Reconstruction Error on Negative Samples:  0.098
+Reconstruction Stddev on Negative Samples:  0.188
+===================================

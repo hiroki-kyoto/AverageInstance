@@ -646,7 +646,7 @@ def train(ckpt_dir, data_path, log_dir, max_epoc=1000):
                 print('模型保存完毕.')
 
 
-def predict(ckpt_dir, data_path):
+def test(ckpt_dir, data_path):
     print('Loading dataset...')
     data = load_dataset(data_path)
     print('dataset loaded!')
@@ -663,9 +663,10 @@ def predict(ckpt_dir, data_path):
             print("未找到模型参数文件，无法加载模型，推断终止！")
             return
         # check accuracy
-        correct_num = 0.0
-        rec_err_pos = 0.0
-        rec_err_neg = 0.0
+        pos_num = 0.0
+        neg_num = 0.0
+        rec_err_pos = np.zeros([len(data['images'])], dtype=np.float32)
+        rec_err_neg = np.zeros([len(data['images'])], dtype=np.float32)
         for class_id in range(len(data['classes'])):
             offset = 0
             for _cid in range(class_id):
@@ -675,33 +676,74 @@ def predict(ckpt_dir, data_path):
                 x_ = data['images'][_id]
                 y_, x_r_ = sess.run([y, x_r], feed_dict={x: np.expand_dims(x_, 0)})
                 if np.argmax(y_[0]) == class_id:
-                    correct_num += 1.0
-                    rec_err_pos += np.mean(np.abs(x_ - x_r_[0]))
+                    rec_err_pos[int(pos_num)] = np.mean(np.abs(x_ - x_r_[0]))
+                    pos_num += 1.0
                 else:
-                    rec_err_neg += np.mean(np.abs(x_ - x_r_[0]))
-                # y_ = np.maximum(np.minimum(y_[0], 1.0), 0.0)
-                # y_2_i = np.maximum(np.minimum(y_2_i[0], 1.0), 0.0)
-                # y_2 = np.concatenate((data['x'][i], y_2, y_2_i), axis=1)
-                # plt.clf()
-                # plt.title('图片#%06d' % i)
-                # plt.imshow(y_2)
-                # plt.pause(0.01)
-        print('Test Accuracy: %6.3f' % (correct_num / len(data['images'])))
-        print('Reconstruction Error on Positive Samples: %6.3f' % (rec_err_pos / correct_num))
-        correct_num = len(data['images']) - correct_num
-        if correct_num > 0:
-            print('Reconstruction Error on Negative Samples: %6.3f' % (rec_err_neg / correct_num))
+                    rec_err_neg[int(neg_num)] = np.mean(np.abs(x_ - x_r_[0]))
+                    neg_num += 1.0
+                im_rec = np.maximum(np.minimum(x_r_[0], 1.0), 0.0)
+                im_rec = np.concatenate((data['images'][_id], im_rec), axis=1)
+                plt.clf()
+                plt.title('图片#%06d 预测%s' % (_id, ["错误", "正确"][np.argmax(y_[0]) == class_id]))
+                plt.imshow(im_rec)
+                plt.pause(1)
+
+        print('Test Accuracy: %6.3f' % (pos_num / len(data['images'])))
+        if pos_num > 0:
+            mean_rec_err_pos = np.sum(rec_err_pos) / pos_num
+            std_rec_err_pos = np.sqrt(np.sum(np.square(rec_err_pos - mean_rec_err_pos)) / pos_num)
+            print('Reconstruction Error on Positive Samples: %6.3f' % mean_rec_err_pos)
+            print('Reconstruction Stddev on Positive Samples: %6.3f' % std_rec_err_pos)
+        if neg_num > 0:
+            mean_rec_err_neg = np.sum(rec_err_neg) / neg_num
+            std_rec_err_neg = np.sqrt(np.sum(np.square(rec_err_neg - mean_rec_err_neg)) / neg_num)
+            print('Reconstruction Error on Negative Samples: %6.3f' % mean_rec_err_neg)
+            print('Reconstruction Stddev on Negative Samples: %6.3f' % std_rec_err_neg)
+
+
+def predict(ckpt_dir, data_path):
+    print('Loading dataset...')
+    data = load_dataset(data_path)
+    print('dataset loaded!')
+    n_classes = len(data['classes'])
+    with tf.Graph().as_default():
+        x, y, z, x_r = build_network(n_classes)
+        sess = tf.Session()
+        saver = tf.train.Saver()
+        ckpt_file = tf.train.latest_checkpoint(ckpt_dir)
+        if ckpt_file:
+            print('发现模型参数文件，正在恢复模型。')
+            saver.restore(sess, ckpt_file)
+        else:
+            print("未找到模型参数文件，无法加载模型，推断终止！")
+            return
+        rec_err = np.zeros([len(data['images'])], dtype=np.float32)
+        for _id in range(len(data['images'])):
+            x_ = data['images'][_id]
+            y_, x_r_ = sess.run([y, x_r], feed_dict={x: np.expand_dims(x_, 0)})
+            rec_err[_id] = np.mean(np.abs(x_ - x_r_[0]))
+            im_rec = np.maximum(np.minimum(x_r_[0], 1.0), 0.0)
+            im_rec = np.concatenate((data['images'][_id], im_rec), axis=1)
+            plt.clf()
+            plt.title('图片#%06d' % _id)
+            plt.imshow(im_rec)
+            plt.pause(1)
+        mean_rec_err = np.sum(rec_err) / float(len(data['images']))
+        std_rec_err = np.sqrt(np.sum(np.square(rec_err - mean_rec_err)) / float(len(data['images'])))
+        print('Reconstruction Error: %6.3f' % mean_rec_err)
+        print('Reconstruction Stddev: %6.3f' % std_rec_err)
 
 
 if __name__ == '__main__':
     print('==== RUNNING FROM AUTO ENCODER ====')
-    check()
-    check_dataset()
+    #check()
+    #check_dataset()
 
     # train('../Models/ClassifierEstimator/',  # model saving path
     #       '../Datasets/ClassifierEstimator/train/',  # dataset loading path
     #       '../Logs/ClassifierEstimator/',  # logging path
     #       500)  # the maximum number of epoch to run
 
-    predict('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/test/')
+    #test('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/test/')
+    predict('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/test-single/')
     print('===================================')
