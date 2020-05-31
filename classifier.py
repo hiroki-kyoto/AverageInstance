@@ -21,6 +21,24 @@ def __windows__():
     return bool(platform.system() == 'Windows')
 
 
+def SSIM(y_true , y_pred):
+    assert len(y_true.shape)==3
+    sum_ = 0.0
+    for i in range(y_true.shape[2]):
+        u_true = np.mean(y_true[:, :, i])
+        u_pred = np.mean(y_pred[:, :, i])
+        var_true = np.var(y_true[:, :, i])
+        var_pred = np.var(y_pred[:, :, i])
+        std_true = np.sqrt(var_true)
+        std_pred = np.sqrt(var_pred)
+        c1 = np.square(0.01*7)
+        c2 = np.square(0.03*7)
+        ssim = (2 * u_true * u_pred + c1) * (2 * std_pred * std_true + c2)
+        denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
+        sum_ += ssim / denom
+    return sum_ / y_true.shape[2]
+
+
 # Observation
 # Abstract the unvaried features: learning from only positive samples
 # Plan:
@@ -545,7 +563,9 @@ def load_dataset(path):
         else:
             seg = classes[i].rfind('/')
             data['classes'].append(classes[i][seg + 1:])
-        files = glob.glob(classes[i] + '/*.jpg')
+        files = glob.glob(classes[i] + '/*.png')
+        files_jpg = glob.glob(classes[i] + '/*.jpg')
+        files.extend(files_jpg)
         # print(files)
         images = []
         for fp in files:
@@ -597,7 +617,7 @@ def train(ckpt_dir, data_path, log_dir, max_epoc=1000):
         y_g = tf.placeholder(dtype=tf.float32, shape=[None, n_classes])
         loss, loss_ass, loss_rec = make_loss(x, y, x_r, y_g)
         opt = tf.train.AdamOptimizer(learning_rate=1e-4)\
-            .minimize(loss_rec, global_step=step)
+            .minimize(loss, global_step=step)
         tf.summary.scalar('Total Loss', loss)
         tf.summary.scalar('Association Loss', loss_ass)
         tf.summary.scalar('Reconstruction Loss', loss_rec)
@@ -675,18 +695,20 @@ def test(ckpt_dir, data_path):
                 _id += offset
                 x_ = data['images'][_id]
                 y_, x_r_ = sess.run([y, x_r], feed_dict={x: np.expand_dims(x_, 0)})
+                x_r_ = np.maximum(np.minimum(x_r_[0], 1.0), 0.0)
                 if np.argmax(y_[0]) == class_id:
-                    rec_err_pos[int(pos_num)] = np.mean(np.abs(x_ - x_r_[0]))
+                    rec_err_pos[int(pos_num)] = np.mean(np.abs(x_ - x_r_))
                     pos_num += 1.0
                 else:
-                    rec_err_neg[int(neg_num)] = np.mean(np.abs(x_ - x_r_[0]))
+                    rec_err_neg[int(neg_num)] = np.mean(np.abs(x_ - x_r_))
                     neg_num += 1.0
-                im_rec = np.maximum(np.minimum(x_r_[0], 1.0), 0.0)
+                im_rec = x_r_
                 im_rec = np.concatenate((data['images'][_id], im_rec), axis=1)
                 plt.clf()
-                plt.title('图片#%06d 预测%s' % (_id, ["错误", "正确"][np.argmax(y_[0]) == class_id]))
+                plt.title('图片#%06d 预测%s' %
+                          (_id, ["错误", "正确"][int(np.argmax(y_[0]) == class_id)]))
                 plt.imshow(im_rec)
-                plt.pause(1)
+                plt.pause(0.01)
 
         print('Test Accuracy: %6.3f' % (pos_num / len(data['images'])))
         if pos_num > 0:
@@ -706,6 +728,7 @@ def predict(ckpt_dir, data_path):
     data = load_dataset(data_path)
     print('dataset loaded!')
     n_classes = len(data['classes'])
+
     with tf.Graph().as_default():
         x, y, z, x_r = build_network(n_classes)
         sess = tf.Session()
@@ -721,17 +744,26 @@ def predict(ckpt_dir, data_path):
         for _id in range(len(data['images'])):
             x_ = data['images'][_id]
             y_, x_r_ = sess.run([y, x_r], feed_dict={x: np.expand_dims(x_, 0)})
+            x_r_ = np.maximum(np.minimum(x_r_, 1.0), 0.0)
             rec_err[_id] = np.mean(np.abs(x_ - x_r_[0]))
+            #rec_err[_id] = 1.0 - SSIM(x_r_[0], x_)
             im_rec = np.maximum(np.minimum(x_r_[0], 1.0), 0.0)
             im_rec = np.concatenate((data['images'][_id], im_rec), axis=1)
             plt.clf()
             plt.title('图片#%06d' % _id)
             plt.imshow(im_rec)
-            plt.pause(1)
+            plt.pause(0.01)
         mean_rec_err = np.sum(rec_err) / float(len(data['images']))
         std_rec_err = np.sqrt(np.sum(np.square(rec_err - mean_rec_err)) / float(len(data['images'])))
         print('Reconstruction Error: %6.3f' % mean_rec_err)
         print('Reconstruction Stddev: %6.3f' % std_rec_err)
+        # reconstruction error in each class
+        offset = 0
+        for i in range(len(data['classes'])):
+            miu_ = np.mean(rec_err[offset:offset+data['sizes'][i]])
+            std_ = np.sqrt(np.mean(np.square(rec_err[offset:offset+data['sizes'][i]] - miu_)))
+            print('Reconstruction Error on %s: %6.3f+/-%6.3f' % (data['classes'][i], miu_, std_))
+            offset += data['sizes'][i]
 
 
 if __name__ == '__main__':
@@ -740,10 +772,10 @@ if __name__ == '__main__':
     #check_dataset()
 
     # train('../Models/ClassifierEstimator/',  # model saving path
-    #       '../Datasets/ClassifierEstimator/train/',  # dataset loading path
-    #       '../Logs/ClassifierEstimator/',  # logging path
-    #       500)  # the maximum number of epoch to run
+    #        '../Datasets/ClassifierEstimator/train/',  # dataset loading path
+    #        '../Logs/ClassifierEstimator/',  # logging path
+    #        500)  # the maximum number of epoch to run
 
-    #test('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/test/')
+    test('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/test/')
     predict('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/test-single/')
     print('===================================')

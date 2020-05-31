@@ -1,6 +1,42 @@
-Test Accuracy:  0.785
-Reconstruction Error on Positive Samples:  0.088
-Reconstruction Stddev on Positive Samples:  0.054
-Reconstruction Error on Negative Samples:  0.098
-Reconstruction Stddev on Negative Samples:  0.188
+C:\ProgramData\Anaconda3\envs\hualiaoshi\python.exe E:/Gitee/ClassifierEstimator/classifier.py
+==== RUNNING FROM AUTO ENCODER ====
+Loading dataset...
+          cherry:	120
+      strawberry:	120
+dataset loaded!
+
+Test Accuracy:  0.963
+Reconstruction Error on Positive Samples:  0.069
+Reconstruction Stddev on Positive Samples:  0.023
+Reconstruction Error on Negative Samples:  0.071
+Reconstruction Stddev on Negative Samples:  0.361
+
+
+Loading dataset...
+           apple:	10
+         bicycle:	10
+            bird:	10
+            book:	10
+          candle:	10
+             cat:	10
+             dog:	10
+          flower:	10
+           phone:	10
+        umbrella:	10
+dataset loaded!
+
+Reconstruction Error:  0.089
+Reconstruction Stddev:  0.037
+Reconstruction Error on apple:  0.064+/- 0.029
+Reconstruction Error on bicycle:  0.139+/- 0.028
+Reconstruction Error on bird:  0.085+/- 0.024
+Reconstruction Error on book:  0.085+/- 0.017
+Reconstruction Error on candle:  0.058+/- 0.020
+Reconstruction Error on cat:  0.081+/- 0.016
+Reconstruction Error on dog:  0.080+/- 0.018
+Reconstruction Error on flower:  0.108+/- 0.029
+Reconstruction Error on phone:  0.125+/- 0.049
+Reconstruction Error on umbrella:  0.061+/- 0.014
 ===================================
+
+Process finished with exit code 0
