@@ -1,5 +1,5 @@
-from urllib import request
-
+# mobilenet_v2.py
+from collections.abc import Iterable
 from PIL import Image
 import numpy as np
 import torch
@@ -14,11 +14,9 @@ from torch.utils.data import DataLoader
 
 def load_dataset(data_dir):
     dataset = torchvision.datasets.ImageFolder(
-        root=os.path.join(data_dir, 'train'),
+        root=data_dir,
         transform=torchvision.transforms.Compose([
             torchvision.transforms.Resize(224),
-            torchvision.transforms.RandomRotation(180, center=True),
-            torchvision.transforms.RandomHorizontalFlip(),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize(
                 mean=(0.485, 0.456, 0.406),
@@ -28,18 +26,15 @@ def load_dataset(data_dir):
 
 
 class MobileNet(torch.nn.Module):
-    def __init__(self, num_classes=685):   # num_classes，此处为 二分类值为2
+    def __init__(self, num_classes=2):
         super(MobileNet, self).__init__()
-        net = models.mobilenet_v2(pretrained=True)   # 从预训练模型加载VGG16网络参数
-        net.classifier = nn.Sequential()  # 将分类层置空，下面将改变我们的分类层
-        self.features = net  # 保留VGG16的特征层
-        self.classifier = nn.Sequential(    # 定义自己的分类层
-                nn.Linear(1280, 1000),  #512 * 7 * 7不能改变 ，由VGG16网络决定的，第二个参数为神经元个数可以微调
+        net = torchvision.models.mobilenet_v2(pretrained=True)
+        net.classifier = torch.nn.Sequential()
+        self.features = net
+        self.classifier = nn.Sequential(
+                nn.Linear(1280, 1000),
                 nn.ReLU(True),
                 nn.Dropout(0.5),
-#                 nn.Linear(1024, 1024),
-#                 nn.ReLU(True),
-#                 nn.Dropout(0.3),
                 nn.Linear(1000, num_classes),
         )
 
@@ -49,10 +44,29 @@ class MobileNet(torch.nn.Module):
         x = self.classifier(x)
         return x
 
+
+def set_freeze_by_names(model, layer_names, freeze=True):
+    if not isinstance(layer_names, Iterable):
+        layer_names = [layer_names]
+    for name, child in model.named_children():
+        if name not in layer_names:
+            continue
+        for param in child.parameters():
+            param.requires_grad = not freeze
+
+
+def freeze_by_names(model, layer_names):
+    set_freeze_by_names(model, layer_names, True)
+
+
+def unfreeze_by_names(model, layer_names):
+    set_freeze_by_names(model, layer_names, False)
+
+
 def main():
     mobilenet = torchvision.models.mobilenet_v2(pretrained=True)
-    num_fc_in = mobilenet.fc.in_features
-    mobilenet.fc = torch.nn.Linear(num_fc_in, 2)
+    freeze_by_names(mobilenet, ['features'])
+    mobilenet.classifier = torch.nn.Linear(mobilenet.last_channel, 2)
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('trian_device:{}'.format(device.type))
     mobilenet = mobilenet.to(device)
@@ -101,9 +115,9 @@ def main():
             #                                                                     correct / total))
             #     running_loss = 0.0
 
-            # if i % 10 == 9:
-            #     print('[{}, {}] loss={:.5f}'.format(epoch+1, i+1, running_loss / 10))
-            #     running_loss = 0.0
+            if not (i+1) % 3:
+                print('[{}, {}] loss={:.5f}'.format(epoch+1, i+1, running_loss / 10))
+                running_loss = 0.0
 
         print('saving models...')
         torch.save(mobilenet.state_dict(), '../Models/cherry-strawberry.pth')
