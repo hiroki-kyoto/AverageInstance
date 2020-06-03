@@ -1,7 +1,12 @@
+from urllib import request
+
 from PIL import Image
 import numpy as np
 import torch
 import torchvision
+from requests import models
+from tensorflow.python.ops import nn
+
 import imagenet_classes as imagenet
 import os
 from torch.utils.data import DataLoader
@@ -22,7 +27,7 @@ def load_dataset(data_dir):
     return dataset
 
 
-class MobileNet(nn.Module):
+class MobileNet(torch.nn.Module):
     def __init__(self, num_classes=685):   # num_classes，此处为 二分类值为2
         super(MobileNet, self).__init__()
         net = models.mobilenet_v2(pretrained=True)   # 从预训练模型加载VGG16网络参数
