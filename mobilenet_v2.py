@@ -1,14 +1,12 @@
 # mobilenet_v2.py
 from collections.abc import Iterable
-from PIL import Image
 import numpy as np
 import torch
 import torchvision
-from requests import models
-from tensorflow.python.ops import nn
-
+from torch import nn as nn
+from PIL import Image
+from torch import Tensor
 import imagenet_classes as imagenet
-import os
 from torch.utils.data import DataLoader
 
 
@@ -23,26 +21,6 @@ def load_dataset(data_dir):
                 std=(0.229, 0.224, 0.225))
         ]))
     return dataset
-
-
-class MobileNet(torch.nn.Module):
-    def __init__(self, num_classes=2):
-        super(MobileNet, self).__init__()
-        net = torchvision.models.mobilenet_v2(pretrained=True)
-        net.classifier = torch.nn.Sequential()
-        self.features = net
-        self.classifier = nn.Sequential(
-                nn.Linear(1280, 1000),
-                nn.ReLU(True),
-                nn.Dropout(0.5),
-                nn.Linear(1000, num_classes),
-        )
-
-    def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x
 
 
 def set_freeze_by_names(model, layer_names, freeze=True):
@@ -63,14 +41,59 @@ def unfreeze_by_names(model, layer_names):
     set_freeze_by_names(model, layer_names, False)
 
 
+def test_single_image():
+    mobilenet = torchvision.models.mobilenet_v2(pretrained=True)
+    mobilenet.eval()
+    im = Image.open("./demo/test2.png")
+    im = im.resize([224, 224])
+    x = np.array(im, dtype=np.float32)/255.0
+    if len(x.shape)==1: # gray image
+        x = np.stack([x, x, x], axis=-1)
+    elif len(x.shape)==3 and x.shape[2]==4: # RGBA image
+        x = x[:, :, 0:3]
+    elif len(x.shape)==3 and x.shape[2]==3: # RGB image
+        pass
+    else:
+        print('Error: invalid input image format!')
+        exit(-1)
+    x = x.transpose([2, 0, 1])
+    x_t = torch.from_numpy(np.expand_dims(x, 0))
+    y_t = mobilenet(x_t)
+    y_t = torch.softmax(y_t, -1)
+    y = np.array(y_t.tolist())[0]
+    res = np.argmax(y)
+    print('predicted class [%s] with confidence of [%6.3f]' % (imagenet.class_names[res], y[res]))
+
+
 def main():
+    # test_single_image()
+    # return
+
     mobilenet = torchvision.models.mobilenet_v2(pretrained=True)
     freeze_by_names(mobilenet, ['features'])
-    mobilenet.classifier = torch.nn.Linear(mobilenet.last_channel, 2)
+    mobilenet.classifier = nn.Linear(mobilenet.last_channel, 2)
+
+    # add decoder to restore input images, features=1280 for mobilenetv2
+    decoder = nn.Sequential([
+        nn.Linear(1280, 256, False),
+        nn.Linear(256, 256, True),
+        nn.LeakyReLU(0.2),
+        torch.reshape(mobilenet.features, [1, 1, 16, 16]),  # make it 16x16x1
+        nn.Conv2d(1, 4, (3, 3), (1, 1), (1, 1), bias=False),  # make it 16x16x4
+        nn.ConvTranspose2d(4, 1, (3, 3), (2, 2), bias=True),  # make it 17x17x1
+        nn.LeakyReLU(0.2),
+    ])
+    mobilenet.add_module('decoder', decoder)
+    mobilenet.decoder = []
+
+    graph = mobilenet.eval()
+    print(graph)
+    return
+
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('trian_device:{}'.format(device.type))
     mobilenet = mobilenet.to(device)
-    loss_func = torch.nn.CrossEntropyLoss()
+    loss_func = nn.CrossEntropyLoss()
     opt = torch.optim.Adam(mobilenet.parameters(), lr=1E-4)
 
     # setup dataset
@@ -98,55 +121,27 @@ def main():
             loss.backward()
             opt.step()
             running_loss += loss.item()
-            # if i % 20 == 19:
-            #     correct = 0
-            #     total = 0
-            #     model.eval()
-            #     for images_test, labels_test in val_dataloader:
-            #         images_test = images_test.to(device)
-            #         labels_test = labels_test.to(device)
-            #
-            #         outputs_test = model(images_test)
-            #         _, prediction = torch.max(outputs_test, 1)
-            #         correct += (torch.sum((prediction == labels_test))).item()
-            #         # print(prediction, labels_test, correct)
-            #         total += labels_test.size(0)
-            #     print('[{}, {}] running_loss = {:.5f} accurcay = {:.5f}'.format(epoch + 1, i + 1, running_loss / 20,
-            #                                                                     correct / total))
-            #     running_loss = 0.0
-
-            if not (i+1) % 3:
+            if not (i+1) % 6:
                 print('[{}, {}] loss={:.5f}'.format(epoch+1, i+1, running_loss / 10))
                 running_loss = 0.0
+        # check training accuracy
+        correct = 0
+        total = 0
+        mobilenet.eval()
+        for images_train, labels_train in train_dataloader:
+            images_train = images_train.to(device)
+            labels_train = labels_train.to(device)
+            outputs_train = mobilenet(images_train)
+            _, prediction = torch.max(outputs_train, 1)
+            correct += (torch.sum((prediction == labels_train))).item()
+            total += labels_train.size(0)
+        print('#{} train accuracy={:.5f}'.format(epoch+1, 1.0*correct/total))
 
         print('saving models...')
         torch.save(mobilenet.state_dict(), '../Models/cherry-strawberry.pth')
+        print('models saved at epoch #%d' % (epoch+1))
     print('training finished !')
-
-    # test settings
-    # mobilenet.eval()
-    # im = Image.open("./demo/test2.png")
-    # im = im.resize([224, 224])
-    # x = np.array(im, dtype=np.float32)/255.0
-    # if len(x.shape)==1: # gray image
-    #     x = np.stack([x, x, x], axis=-1)
-    # elif len(x.shape)==3 and x.shape[2]==4: # RGBA image
-    #     x = x[:, :, 0:3]
-    # elif len(x.shape)==3 and x.shape[2]==3: # RGB image
-    #     pass
-    # else:
-    #     print('Error: invalid input image format!')
-    #     exit(-1)
-    # x = x.transpose([2, 0, 1])
-    # x_t = torch.Tensor(np.expand_dims(x, 0))
-    # y_t = mobilenet(x_t)
-    # y_t = torch.softmax(y_t, -1)
-    # y = np.array(y_t.data[0])
-    # res = np.argmax(y)
-    # print('predicted class [%s] with confidence of [%6.3f]' % (imagenet.class_names[res], y[res]))
 
 
 if __name__ == '__main__':
     main()
-
-# sample code from [https://www.jianshu.com/p/d04c17368922]
