@@ -73,16 +73,17 @@ def main():
     freeze_by_names(mobilenet, ['features'])
     mobilenet.classifier = nn.Linear(mobilenet.last_channel, 2)
 
-    # add decoder to restore input images, features=1280 for mobilenetv2
-    decoder = nn.Sequential([
+    # add decoder to restore input images, features=1280 for mobilenet-v2
+    last_layer = nn.Sequential(
         nn.Linear(1280, 256, False),
         nn.Linear(256, 256, True),
-        nn.LeakyReLU(0.2),
+        nn.LeakyReLU(0.2))
+        # how to turn 2d tensor into 4d tensor and remain a module?
         torch.reshape(mobilenet.features, [1, 1, 16, 16]),  # make it 16x16x1
         nn.Conv2d(1, 4, (3, 3), (1, 1), (1, 1), bias=False),  # make it 16x16x4
         nn.ConvTranspose2d(4, 1, (3, 3), (2, 2), bias=True),  # make it 17x17x1
-        nn.LeakyReLU(0.2),
-    ])
+        nn.LeakyReLU(0.2)
+    )
     mobilenet.add_module('decoder', decoder)
     mobilenet.decoder = []
 
