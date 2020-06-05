@@ -62,7 +62,8 @@ def test_single_image():
     y_t = torch.softmax(y_t, -1)
     y = np.array(y_t.tolist())[0]
     res = np.argmax(y)
-    print('predicted class [%s] with confidence of [%6.3f]' % (imagenet.class_names[res], y[res]))
+    print('predicted class [%s] with confidence of [%6.3f]' %
+          (imagenet.class_names[res], y[res]))
 
 
 class TrustedMobileNetV2(nn.Module):
@@ -74,47 +75,82 @@ class TrustedMobileNetV2(nn.Module):
         # add decoder to restore input images, features=1280 for mobilenet-v2
         decoder_ = []
         layer_ = nn.Sequential(
-            nn.Linear(1280, 256, False),
-            nn.Linear(256, 256, True),
+            nn.Conv2d(1280, 256, (1, 1), (1, 1), bias=False),
+            nn.Conv2d(256, 256, (1, 1), (1, 1), bias=True),
             nn.LeakyReLU(0.2)
         )
         decoder_.append(layer_)
         layer_ = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, (3, 3), (1, 1), padding=0, output_padding=0, bias=True),  # make it 3x3x128
+            nn.ConvTranspose2d(256, 128,
+                               (3, 3), (1, 1),
+                               padding=0,
+                               output_padding=0,
+                               bias=True),  # make it 3x3x128
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(128, 64, (3, 3), (2, 2), padding=0, output_padding=0, bias=True),  # make it 7x7x64
+            nn.ConvTranspose2d(128, 64,
+                               (3, 3), (2, 2),
+                               padding=0,
+                               output_padding=0,
+                               bias=True),  # make it 7x7x64
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(64, 32, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 14x14x32
+            nn.ConvTranspose2d(64, 32,
+                               (1, 1), (2, 2),
+                               padding=0,
+                               output_padding=1,
+                               bias=True),  # make it 14x14x32
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 16, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 28x28x16
+            nn.ConvTranspose2d(32, 16,
+                               (1, 1), (2, 2),
+                               padding=0,
+                               output_padding=1,
+                               bias=True),  # make it 28x28x16
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(16, 8, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 56x56x8
+            nn.ConvTranspose2d(16, 8,
+                               (1, 1), (2, 2),
+                               padding=0,
+                               output_padding=1,
+                               bias=True),  # make it 56x56x8
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(8, 4, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 112x112x4
+            nn.ConvTranspose2d(8, 4, (1, 1), (2, 2),
+                               padding=0,
+                               output_padding=1,
+                               bias=True),  # make it 112x112x4
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(4, 4, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 224x224x4
+            nn.ConvTranspose2d(4, 4,
+                               (1, 1), (2, 2),
+                               padding=0,
+                               output_padding=1,
+                               bias=True),  # make it 224x224x4
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(4, 3, (1, 1), (1, 1), padding=0, output_padding=0, bias=True)  # make it 224x224x3
+            nn.ConvTranspose2d(4, 3,
+                               (1, 1), (1, 1),
+                               padding=0,
+                               output_padding=0,
+                               bias=True)  # make it 224x224x3
         )
         decoder_.append(layer_)
         decoder_ = nn.Sequential(*decoder_)
         self.mobilenet.add_module('decoder', decoder_)
 
     def forward(self, x):
-        feats = self.features(x)
+        feats = self.mobilenet.features(x)
         x = feats.mean([2, 3])
+        x_1 = feats.mean([2, 3], keepdim=True)
         pred_class = self.mobilenet.classifier(x)
-        pred_image = self.mobilenet.decoder(x)
+        pred_image = self.mobilenet.decoder(x_1)
         return pred_class, pred_image
 
     def to(self, *args, **kwargs):
-        return self.mobilenet.to(*args, **kwargs)
+        self.mobilenet.to(*args, **kwargs)
+        return self
 
     def train(self, mode=True):
-        return self.mobilenet.train(mode)
+        self.mobilenet.train(mode)
+        return self
 
     def eval(self):
-        return self.mobilenet.eval()
+        self.mobilenet.eval()
+        return self
 
 
 def main():
@@ -124,7 +160,7 @@ def main():
     print(net.eval())
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('train_device:{}'.format(device.type))
-    net = net.to(device)
+    net.to(device)
     loss_c = nn.CrossEntropyLoss()
     loss_r = nn.L1Loss(reduction='mean')
     opt = torch.optim.Adam(net.parameters(), lr=1E-4)
@@ -139,24 +175,28 @@ def main():
     num_epochs = 500
     for epoch in range(num_epochs):
         running_loss = 0.0
+        running_loss_c = 0
+        running_loss_r = 0
         for i, sample_batch in enumerate(train_dataloader):
             inputs = sample_batch[0]
             labels = sample_batch[1]
             net.train()
             # GPU/CPU
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+            inputs.to(device)
+            labels.to(device)
             opt.zero_grad()
             # foward
             class_, image_ = net(inputs)
             loss_c_ = loss_c(class_, labels)
             loss_r_ = loss_r(image_, inputs)
             loss = loss_c_ + loss_r_
-            # backward: as features are frozen, no grad will merge in features, use detach for safety
+            # backward: as features are frozen,
+            # no grad will merge in features,
+            # use detach if unfreeze feature layers
             loss.backward()
             opt.step()
-            running_loss_c = loss_c_.item()
-            running_loss_r = loss_r_.item()
+            running_loss_c += loss_c_.item()
+            running_loss_r += loss_r_.item()
             running_loss += loss.item()
             every_n_batch = 10
             if not (i+1) % every_n_batch:
@@ -172,13 +212,13 @@ def main():
         total = 0
         net.eval()
         for images_train, labels_train in train_dataloader:
-            images_train = images_train.to(device)
-            labels_train = labels_train.to(device)
+            images_train.to(device)
+            labels_train.to(device)
             class_, image_ = net(images_train)
             _, prediction = torch.max(class_, 1)
             correct += (torch.sum((prediction == labels_train))).item()
             total += labels_train.size(0)
-        print('#{} train accuracy={:.5f}'.format(epoch+1, 1.0*correct/total))
+        print('#{:6d} train accuracy={:.5f}'.format(epoch+1, 1.0*correct/total))
 
         print('saving models...')
         torch.save(net.state_dict(), '../Models/cherry-strawberry.pth')
