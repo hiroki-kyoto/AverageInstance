@@ -65,37 +65,69 @@ def test_single_image():
     print('predicted class [%s] with confidence of [%6.3f]' % (imagenet.class_names[res], y[res]))
 
 
+class TrustedMobileNetV2(nn.Module):
+    def __init__(self):
+        super(TrustedMobileNetV2, self).__init__()
+        self.mobilenet = torchvision.models.mobilenet_v2(pretrained=True)
+        freeze_by_names(self.mobilenet, ['features'])
+        self.mobilenet.classifier = nn.Linear(self.mobilenet.last_channel, 2)
+        # add decoder to restore input images, features=1280 for mobilenet-v2
+        decoder_ = []
+        layer_ = nn.Sequential(
+            nn.Linear(1280, 256, False),
+            nn.Linear(256, 256, True),
+            nn.LeakyReLU(0.2)
+        )
+        decoder_.append(layer_)
+        layer_ = nn.Sequential(
+            nn.ConvTranspose2d(256, 128, (3, 3), (1, 1), padding=0, output_padding=0, bias=True),  # make it 3x3x128
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(128, 64, (3, 3), (2, 2), padding=0, output_padding=0, bias=True),  # make it 7x7x64
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(64, 32, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 14x14x32
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(32, 16, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 28x28x16
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(16, 8, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 56x56x8
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(8, 4, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 112x112x4
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(4, 4, (1, 1), (2, 2), padding=0, output_padding=1, bias=True),  # make it 224x224x4
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(4, 3, (1, 1), (1, 1), padding=0, output_padding=0, bias=True)  # make it 224x224x3
+        )
+        decoder_.append(layer_)
+        decoder_ = nn.Sequential(*decoder_)
+        self.mobilenet.add_module('decoder', decoder_)
+
+    def forward(self, x):
+        feats = self.features(x)
+        x = feats.mean([2, 3])
+        pred_class = self.mobilenet.classifier(x)
+        pred_image = self.mobilenet.decoder(x)
+        return pred_class, pred_image
+
+    def to(self, *args, **kwargs):
+        return self.mobilenet.to(*args, **kwargs)
+
+    def train(self, mode=True):
+        return self.mobilenet.train(mode)
+
+    def eval(self):
+        return self.mobilenet.eval()
+
+
 def main():
     # test_single_image()
     # return
-
-    mobilenet = torchvision.models.mobilenet_v2(pretrained=True)
-    freeze_by_names(mobilenet, ['features'])
-    mobilenet.classifier = nn.Linear(mobilenet.last_channel, 2)
-
-    # add decoder to restore input images, features=1280 for mobilenet-v2
-    last_layer = nn.Sequential(
-        nn.Linear(1280, 256, False),
-        nn.Linear(256, 256, True),
-        nn.LeakyReLU(0.2))
-        # how to turn 2d tensor into 4d tensor and remain a module?
-        torch.reshape(mobilenet.features, [1, 1, 16, 16]),  # make it 16x16x1
-        nn.Conv2d(1, 4, (3, 3), (1, 1), (1, 1), bias=False),  # make it 16x16x4
-        nn.ConvTranspose2d(4, 1, (3, 3), (2, 2), bias=True),  # make it 17x17x1
-        nn.LeakyReLU(0.2)
-    )
-    mobilenet.add_module('decoder', decoder)
-    mobilenet.decoder = []
-
-    graph = mobilenet.eval()
-    print(graph)
-    return
-
+    net = TrustedMobileNetV2()
+    print(net.eval())
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    print('trian_device:{}'.format(device.type))
-    mobilenet = mobilenet.to(device)
-    loss_func = nn.CrossEntropyLoss()
-    opt = torch.optim.Adam(mobilenet.parameters(), lr=1E-4)
+    print('train_device:{}'.format(device.type))
+    net = net.to(device)
+    loss_c = nn.CrossEntropyLoss()
+    loss_r = nn.L1Loss(reduction='mean')
+    opt = torch.optim.Adam(net.parameters(), lr=1E-4)
 
     # setup dataset
     train_dataset = load_dataset('../Datasets/ClassifierEstimator/train/')
@@ -110,36 +142,46 @@ def main():
         for i, sample_batch in enumerate(train_dataloader):
             inputs = sample_batch[0]
             labels = sample_batch[1]
-            mobilenet.train()
+            net.train()
             # GPU/CPU
             inputs = inputs.to(device)
             labels = labels.to(device)
             opt.zero_grad()
             # foward
-            outputs = mobilenet(inputs)
-            loss = loss_func(outputs, labels)
-            # backward
+            class_, image_ = net(inputs)
+            loss_c_ = loss_c(class_, labels)
+            loss_r_ = loss_r(image_, inputs)
+            loss = loss_c_ + loss_r_
+            # backward: as features are frozen, no grad will merge in features, use detach for safety
             loss.backward()
             opt.step()
+            running_loss_c = loss_c_.item()
+            running_loss_r = loss_r_.item()
             running_loss += loss.item()
-            if not (i+1) % 6:
-                print('[{}, {}] loss={:.5f}'.format(epoch+1, i+1, running_loss / 10))
+            every_n_batch = 10
+            if not (i+1) % every_n_batch:
+                print('[{}, {}] loss_c={:.5f} loss_r={:.5f} loss={:.5f}'.format(
+                    epoch + 1,
+                    i + 1,
+                    running_loss_c / every_n_batch,
+                    running_loss_r / every_n_batch,
+                    running_loss / every_n_batch))
                 running_loss = 0.0
         # check training accuracy
         correct = 0
         total = 0
-        mobilenet.eval()
+        net.eval()
         for images_train, labels_train in train_dataloader:
             images_train = images_train.to(device)
             labels_train = labels_train.to(device)
-            outputs_train = mobilenet(images_train)
-            _, prediction = torch.max(outputs_train, 1)
+            class_, image_ = net(images_train)
+            _, prediction = torch.max(class_, 1)
             correct += (torch.sum((prediction == labels_train))).item()
             total += labels_train.size(0)
         print('#{} train accuracy={:.5f}'.format(epoch+1, 1.0*correct/total))
 
         print('saving models...')
-        torch.save(mobilenet.state_dict(), '../Models/cherry-strawberry.pth')
+        torch.save(net.state_dict(), '../Models/cherry-strawberry.pth')
         print('models saved at epoch #%d' % (epoch+1))
     print('training finished !')
 
