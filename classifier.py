@@ -683,10 +683,8 @@ def test(ckpt_dir, data_path):
             print("未找到模型参数文件，无法加载模型，推断终止！")
             return
         # check accuracy
-        pos_num = 0.0
-        neg_num = 0.0
-        rec_err_pos = np.zeros([len(data['images'])], dtype=np.float32)
-        rec_err_neg = np.zeros([len(data['images'])], dtype=np.float32)
+        rec_err_pos = []
+        rec_err_neg = []
         for class_id in range(len(data['classes'])):
             offset = 0
             for _cid in range(class_id):
@@ -697,11 +695,9 @@ def test(ckpt_dir, data_path):
                 y_, x_r_ = sess.run([y, x_r], feed_dict={x: np.expand_dims(x_, 0)})
                 x_r_ = np.maximum(np.minimum(x_r_[0], 1.0), 0.0)
                 if np.argmax(y_[0]) == class_id:
-                    rec_err_pos[int(pos_num)] = np.mean(np.abs(x_ - x_r_))
-                    pos_num += 1.0
+                    rec_err_pos.append(np.mean(np.abs(x_ - x_r_)))
                 else:
-                    rec_err_neg[int(neg_num)] = np.mean(np.abs(x_ - x_r_))
-                    neg_num += 1.0
+                    rec_err_neg.append(np.mean(np.abs(x_ - x_r_)))
                 im_rec = x_r_
                 im_rec = np.concatenate((data['images'][_id], im_rec), axis=1)
                 plt.clf()
@@ -710,17 +706,19 @@ def test(ckpt_dir, data_path):
                 plt.imshow(im_rec)
                 plt.pause(0.01)
 
-        print('Test Accuracy: %6.3f' % (pos_num / len(data['images'])))
-        if pos_num > 0:
-            mean_rec_err_pos = np.sum(rec_err_pos) / pos_num
-            std_rec_err_pos = np.sqrt(np.sum(np.square(rec_err_pos - mean_rec_err_pos)) / pos_num)
-            print('Reconstruction Error on Positive Samples: %6.3f' % mean_rec_err_pos)
-            print('Reconstruction Stddev on Positive Samples: %6.3f' % std_rec_err_pos)
-        if neg_num > 0:
-            mean_rec_err_neg = np.sum(rec_err_neg) / neg_num
-            std_rec_err_neg = np.sqrt(np.sum(np.square(rec_err_neg - mean_rec_err_neg)) / neg_num)
-            print('Reconstruction Error on Negative Samples: %6.3f' % mean_rec_err_neg)
-            print('Reconstruction Stddev on Negative Samples: %6.3f' % std_rec_err_neg)
+        print('Test Accuracy: %6.3f' % (len(rec_err_pos) / len(data['images'])))
+        if len(rec_err_pos) > 0:
+            rec_err_pos = np.array(rec_err_pos)
+            mean_pos = np.mean(rec_err_pos)
+            std_pos = np.sqrt(np.mean(np.square(rec_err_pos - mean_pos)))
+            print('Reconstruction Error on Positive Samples: %6.3f' % mean_pos)
+            print('Reconstruction Stddev on Positive Samples: %6.3f' % std_pos)
+        if len(rec_err_neg) > 0:
+            rec_err_neg = np.array(rec_err_neg)
+            mean_neg = np.mean(rec_err_neg)
+            std_neg = np.sqrt(np.mean(np.square(rec_err_neg - mean_neg)))
+            print('Reconstruction Error on Negative Samples: %6.3f' % mean_neg)
+            print('Reconstruction Stddev on Negative Samples: %6.3f' % std_neg)
 
 
 def predict(ckpt_dir, data_path):
@@ -746,15 +744,14 @@ def predict(ckpt_dir, data_path):
             y_, x_r_ = sess.run([y, x_r], feed_dict={x: np.expand_dims(x_, 0)})
             x_r_ = np.maximum(np.minimum(x_r_, 1.0), 0.0)
             rec_err[_id] = np.mean(np.abs(x_ - x_r_[0]))
-            #rec_err[_id] = 1.0 - SSIM(x_r_[0], x_)
             im_rec = np.maximum(np.minimum(x_r_[0], 1.0), 0.0)
             im_rec = np.concatenate((data['images'][_id], im_rec), axis=1)
             plt.clf()
             plt.title('图片#%06d' % _id)
             plt.imshow(im_rec)
             plt.pause(0.01)
-        mean_rec_err = np.sum(rec_err) / float(len(data['images']))
-        std_rec_err = np.sqrt(np.sum(np.square(rec_err - mean_rec_err)) / float(len(data['images'])))
+        mean_rec_err = np.mean(rec_err)
+        std_rec_err = np.sqrt(np.mean(np.square(rec_err - mean_rec_err)))
         print('Reconstruction Error: %6.3f' % mean_rec_err)
         print('Reconstruction Stddev: %6.3f' % std_rec_err)
         # reconstruction error in each class
@@ -777,5 +774,5 @@ if __name__ == '__main__':
     #        500)  # the maximum number of epoch to run
 
     test('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/test/')
-    predict('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/test-single/')
+    predict('../Models/ClassifierEstimator/', '../Datasets/ClassifierEstimator/predict/')
     print('===================================')

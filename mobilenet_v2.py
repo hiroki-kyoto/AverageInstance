@@ -10,6 +10,9 @@ import imagenet_classes as imagenet
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
+plt.rcParams['font.sans-serif']=['SimHei']
+plt.rcParams['axes.unicode_minus'] = False
+
 
 def load_dataset(data_dir):
     dataset = torchvision.datasets.ImageFolder(
@@ -91,9 +94,9 @@ def tensor2array(tensor):
 
 
 class TrustedMobileNetV2(nn.Module):
-    def __init__(self):
+    def __init__(self, pretrained=True):
         super(TrustedMobileNetV2, self).__init__()
-        self.mobilenet = torchvision.models.mobilenet_v2(pretrained=True)
+        self.mobilenet = torchvision.models.mobilenet_v2(pretrained=pretrained)
         freeze_by_names(self.mobilenet, ['features'])
         self.mobilenet.classifier = nn.Sequential(
             nn.Linear(self.mobilenet.last_channel, 32, bias=True),
@@ -107,58 +110,40 @@ class TrustedMobileNetV2(nn.Module):
         # add decoder to restore input images, features=1280 for mobilenet-v2
         decoder_ = []
         layer_ = nn.Sequential(
-            nn.Conv2d(1280, 256, (1, 1), (1, 1), padding=0, bias=False),
-            nn.Conv2d(256, 256, (1, 1), (1, 1), padding=0, bias=True),
-            nn.LeakyReLU(0.2)
-        )
-        decoder_.append(layer_)
-        layer_ = nn.Sequential(
-            nn.ConvTranspose2d(256, 128,
-                               (3, 3), (1, 1),
-                               padding=0,
-                               output_padding=0,
-                               bias=True),  # make it 3x3x128
-            nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(128, 64,
+            nn.ConvTranspose2d(1280, 64,
                                (3, 3), (2, 2),
-                               padding=0,
-                               output_padding=0,
-                               bias=True),  # make it 7x7x64
-            nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(64, 32,
-                               (1, 1), (2, 2),
-                               padding=0,
+                               padding=1,
                                output_padding=1,
                                bias=True),  # make it 14x14x32
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 16,
-                               (1, 1), (2, 2),
-                               padding=0,
+            nn.ConvTranspose2d(64, 32,
+                               (3, 3), (2, 2),
+                               padding=1,
                                output_padding=1,
                                bias=True),  # make it 28x28x16
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(16, 8,
-                               (1, 1), (2, 2),
-                               padding=0,
+            nn.ConvTranspose2d(32, 16,
+                               (3, 3), (2, 2),
+                               padding=1,
                                output_padding=1,
                                bias=True),  # make it 56x56x8
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(8, 4, (1, 1), (2, 2),
-                               padding=0,
+            nn.ConvTranspose2d(16, 8,
+                               (3, 3), (2, 2),
+                               padding=1,
                                output_padding=1,
                                bias=True),  # make it 112x112x4
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(4, 4,
-                               (1, 1), (2, 2),
-                               padding=0,
+            nn.ConvTranspose2d(8, 4,
+                               (3, 3), (2, 2),
+                               padding=1,
                                output_padding=1,
                                bias=True),  # make it 224x224x4
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(4, 3,
-                               (1, 1), (1, 1),
-                               padding=0,
-                               output_padding=0,
-                               bias=True)  # make it 224x224x3
+            nn.Conv2d(4, 3,
+                      (1, 1), (1, 1),
+                      padding=0,
+                      bias=True)  # make it 224x224x3
         )
         decoder_.append(layer_)
         decoder_ = nn.Sequential(*decoder_)
@@ -167,9 +152,9 @@ class TrustedMobileNetV2(nn.Module):
     def forward(self, x):
         feats = self.mobilenet.features(x)
         x = feats.mean([2, 3])
-        x_1 = feats.mean([2, 3], keepdim=True)
         pred_class = self.mobilenet.classifier(x)
-        pred_image = self.mobilenet.decoder(x_1)
+        pred_image = self.mobilenet.decoder(feats)
+        #print(feats.shape)
         return pred_class, pred_image
 
     def to(self, *args, **kwargs):
@@ -184,8 +169,18 @@ class TrustedMobileNetV2(nn.Module):
         self.mobilenet.eval()
         return self
 
+    def load_params(self, model_path):
+        state_dict = torch.load(model_path)
+        state_dict_new = {}
+        for name_ in state_dict:
+            data = tensor2array(state_dict[name_])
+            print("%s\t%s" % (name_, data.shape))
+            name_new = name_[len('mobilenet.'):]
+            state_dict_new[name_new] = state_dict[name_]
+        self.mobilenet.load_state_dict(state_dict_new)
 
-def main():
+
+def train():
     # test_single_image()
     # return
     net = TrustedMobileNetV2()
@@ -268,10 +263,108 @@ def main():
         print('#{:6d} train accuracy={:.5f}'.format(epoch+1, 1.0*correct/total))
 
         print('saving models...')
-        torch.save(net.state_dict(), '../Models/cherry-strawberry.pth')
+        torch.save(net.state_dict(), '../Models/ClassifierEstimator/cherry-strawberry.pth')
         print('models saved at epoch #%d' % (epoch+1))
-    print('training finished !')
+    print('training finished!')
+
+
+def test():
+    net = TrustedMobileNetV2(pretrained=False)
+    net.load_params('../Models/ClassifierEstimator/cherry-strawberry.pth')
+    # print(net.eval())
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print('test_device:{}'.format(device.type))
+    net.to(device)
+    loss_r = nn.L1Loss(reduction='mean')
+
+    # setup dataset
+    test_dataset = load_dataset('../Datasets/ClassifierEstimator/test/')
+    test_dataloader = DataLoader(
+        dataset=test_dataset,
+        batch_size=1,
+        shuffle=False)
+    # test procedure
+    loss_r_pos = []
+    loss_r_neg = []
+    for i, sample_batch in enumerate(test_dataloader):
+        inputs = sample_batch[0]
+        labels = sample_batch[1]
+        net.eval()
+        # GPU/CPU
+        inputs.to(device)
+        labels.to(device)
+        # foward
+        class_, image_ = net(inputs)
+        class_ = torch.softmax(class_, 1, torch.float32)
+        loss_r_ = loss_r(image_, inputs)
+        _, prediction = torch.max(class_, 1)
+        if prediction[0].item() == labels[0].item():
+            loss_r_pos.append(loss_r_.item())
+        else:
+            loss_r_neg.append(loss_r_.item())
+        im_1 = tensor2array(inputs[0])
+        im_2 = np.maximum(np.minimum(1.0, tensor2array(image_[0])), 0.0)
+        im_ = np.concatenate([im_1, im_2], axis=2)
+        im_ = im_.transpose([1, 2, 0])
+        plt.clf()
+        plt.title('标签:%s 预测:%s' %
+                  (['樱桃', '草莓'][labels[0].item()],
+                   ["错误", "正确"][int(prediction[0].item() == labels[0].item())]))
+        plt.imshow(im_)
+        plt.pause(0.01)
+    loss_r_pos = np.array(loss_r_pos)
+    loss_r_neg = np.array(loss_r_neg)
+    total = loss_r_pos.shape[0] + loss_r_neg.shape[0]
+    print('test accuracy: %6.3f' % (loss_r_pos.shape[0]*1.0 / total))
+    print('rec error on positive: %6.3f+/-%6.3f' % (loss_r_pos.mean(), loss_r_pos.std()))
+    print('rec error on negative: %6.3f+/-%6.3f' % (loss_r_neg.mean(), loss_r_neg.std()))
+
+
+def predict():
+    net = TrustedMobileNetV2(pretrained=False)
+    net.load_params('../Models/ClassifierEstimator/cherry-strawberry.pth')
+    # print(net.eval())
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print('test_device:{}'.format(device.type))
+    net.to(device)
+    loss_r = nn.L1Loss(reduction='mean')
+
+    # setup dataset
+    test_dataset = load_dataset('../Datasets/ClassifierEstimator/predict/')
+    test_dataloader = DataLoader(
+        dataset=test_dataset,
+        batch_size=1,
+        shuffle=False)
+    # test procedure
+    classes = test_dataset.classes
+    losses = [list() for i in range(len(test_dataset.classes))]
+    for i, sample_batch in enumerate(test_dataloader):
+        inputs = sample_batch[0]
+        labels = sample_batch[1]
+        net.eval()
+        # GPU/CPU
+        inputs.to(device)
+        labels.to(device)
+        # foward
+        _, image_ = net(inputs)
+        loss_r_ = loss_r(image_, inputs)
+        losses[labels[0].item()].append(loss_r_.item())
+        im_1 = tensor2array(inputs[0])
+        im_2 = np.maximum(np.minimum(1.0, tensor2array(image_[0])), 0.0)
+        im_ = np.concatenate([im_1, im_2], axis=2)
+        im_ = im_.transpose([1, 2, 0])
+        plt.clf()
+        plt.title('class=%s' % classes[labels[0].item()])
+        plt.imshow(im_)
+        plt.pause(0.01)
+    for i, cid in enumerate(classes):
+        loss_ = np.array(losses[i])
+        print('rec error on %s: %6.3f+/-%6.3f' % (cid, loss_.mean(), loss_.std()))
+    loss_all = np.concatenate(losses)
+    print('total rec error: %6.3f+/-%6.3f' % (loss_all.mean(), loss_all.std()))
 
 
 if __name__ == '__main__':
-    main()
+    #train()
+    #test()
+    predict()
