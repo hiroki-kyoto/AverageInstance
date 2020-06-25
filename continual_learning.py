@@ -134,8 +134,8 @@ class TrustedMobileNetV2(nn.Module):
         self.mobilenet.eval()
         return self
 
-    def load_params(self, model_path):
-        state_dict = torch.load(model_path)
+    def load_params(self, model_path, device):
+        state_dict = torch.load(model_path, map_location=device)
         state_dict_new = {}
         for name_ in state_dict:
             data = tensor2array(state_dict[name_])
@@ -189,8 +189,8 @@ def train_mnist_split(split_id: int, split_class: int):
             # plt.show()
 
             net.eval()  # very important!!! As this disables batch norm in mobilenet-v2
-            inputs.to(device)
-            labels.to(device)
+            inputs = inputs.to(device)
+            labels = labels.to(device)
             # foward
             class_, image_ = net(inputs)
             loss_c_ = loss_c(class_, labels)
@@ -235,6 +235,8 @@ def train_mnist_split(split_id: int, split_class: int):
             # plt.title(str(labels.detach().numpy()[0]))
             # plt.imshow(im_)
             # plt.show()
+            inputs = inputs.to(device)
+            labels = labels.to(device)
             class_, image_ = net(inputs)
             class_ = torch.softmax(class_, 1, torch.float32)
             _, prediction = torch.max(class_, 1)
@@ -244,16 +246,16 @@ def train_mnist_split(split_id: int, split_class: int):
         print('#{:6d} train accuracy={:.5f}'.format(epoch + 1, 1.0 * correct / total))
         # save models
         print('saving models...')
-        torch.save(net.state_dict(), '../Models/ClassifierEstimator/mnist-split-%d.pth' % split_id)
+        torch.save(net.state_dict(), '../Models/ClassifierEstimator/SplitMNIST/mnist-split-%d.pth' % split_id)
         print('models saved at epoch #%d' % (epoch + 1))
     print('training finished!')
 
 
 def test_mnist_split(split_id: int, split_class: int):
-    net = TrustedMobileNetV2(pretrained=False)
-    net.load_params('../Models/ClassifierEstimator/mnist-split-%d.pth' % split_id)
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('test_device:{}'.format(device.type))
+    net = TrustedMobileNetV2(pretrained=False)
+    net.load_params('../Models/ClassifierEstimator/SplitMNIST/mnist-split-%d.pth' % split_id, device)
     net.to(device)
     loss_r = nn.L1Loss(reduction='mean')
 
@@ -282,8 +284,8 @@ def test_mnist_split(split_id: int, split_class: int):
         # plt.show()
 
         # foward
-        inputs.to(device)
-        labels.to(device)
+        inputs = inputs.to(device)
+        labels = labels.to(device)
         net.eval()
         class_, image_ = net(inputs)
         class_ = torch.softmax(class_, 1, torch.float32)
@@ -293,16 +295,16 @@ def test_mnist_split(split_id: int, split_class: int):
             loss_r_pos.append(loss_r_.item())
         else:
             loss_r_neg.append(loss_r_.item())
-        im_1 = tensor2array(inputs[0])
-        im_2 = np.maximum(np.minimum(1.0, tensor2array(image_[0])), 0.0)
-        im_ = np.concatenate([im_1, im_2], axis=2)
-        im_ = im_.transpose([1, 2, 0])
-        plt.clf()
-        plt.title('GT:%d    %s' %
-                  (labels.numpy()[0] + split_id*split_class,
-                   ["WRONG", "CORRECT"][int(prediction[0].item() == labels[0].item())]))
-        plt.imshow(im_)
-        plt.pause(0.01)
+        #im_1 = tensor2array(inputs[0])
+        #im_2 = np.maximum(np.minimum(1.0, tensor2array(image_[0])), 0.0)
+        #im_ = np.concatenate([im_1, im_2], axis=2)
+        #im_ = im_.transpose([1, 2, 0])
+        #plt.clf()
+        #plt.title('GT:%d    %s' %
+        #          (labels.numpy()[0] + split_id*split_class,
+        #           ["WRONG", "CORRECT"][int(prediction[0].item() == labels[0].item())]))
+        #plt.imshow(im_)
+        #plt.pause(0.01)
     loss_r_pos = np.array(loss_r_pos)
     loss_r_neg = np.array(loss_r_neg)
     total = loss_r_pos.shape[0] + loss_r_neg.shape[0]
@@ -313,48 +315,47 @@ def test_mnist_split(split_id: int, split_class: int):
         print('rec error on negative: %6.3f +/- %6.3f' % (loss_r_neg.mean(), loss_r_neg.std()))
 
 
-def predict():
-    net = TrustedMobileNetV2(pretrained=False)
-    net.load_params('../Models/ClassifierEstimator/cherry-strawberry.pth')
-    # print(net.eval())
+def predict_mnist_split(split_id: int, split_class: int):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('test_device:{}'.format(device.type))
+    net = TrustedMobileNetV2(pretrained=False)
+    net.load_params('../Models/ClassifierEstimator/SplitMNIST/mnist-split-%d.pth' % split_id, device)
     net.to(device)
     loss_r = nn.L1Loss(reduction='mean')
 
     # setup dataset
-    test_dataset = load_dataset('../Datasets/ClassifierEstimator/predict/')
-    test_dataloader = DataLoader(
-        dataset=test_dataset,
-        batch_size=1,
-        shuffle=False)
+    test_dataloader = load_mnist(is_train=False)
     # test procedure
-    classes = test_dataset.classes
-    losses = [list() for i in range(len(test_dataset.classes))]
+    loss_r_all = []
     for i, sample_batch in enumerate(test_dataloader):
         inputs = sample_batch[0]
         labels = sample_batch[1]
-        net.eval()
-        # GPU/CPU
-        inputs.to(device)
-        labels.to(device)
+        inputs = sample_batch[0]
+        labels = sample_batch[1]
+        if np.floor(labels.detach().numpy()[0] / 2) == split_id:
+            continue
+        if inputs.shape[1] == 1:
+            inputs = torch.cat([inputs, inputs, inputs], dim=1)
+        labels = torch.from_numpy(labels.detach().numpy() - split_id * split_class)
+
         # foward
-        _, image_ = net(inputs)
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        net.eval()
+        class_, image_ = net(inputs)
+        class_ = torch.softmax(class_, 1, torch.float32)
         loss_r_ = loss_r(image_, inputs)
-        losses[labels[0].item()].append(loss_r_.item())
-        im_1 = tensor2array(inputs[0])
-        im_2 = np.maximum(np.minimum(1.0, tensor2array(image_[0])), 0.0)
-        im_ = np.concatenate([im_1, im_2], axis=2)
-        im_ = im_.transpose([1, 2, 0])
-        plt.clf()
-        plt.title('class=%s' % classes[labels[0].item()])
-        plt.imshow(im_)
-        plt.pause(0.01)
-    for i, cid in enumerate(classes):
-        loss_ = np.array(losses[i])
-        print('rec error on %s: %6.3f+/-%6.3f' % (cid, loss_.mean(), loss_.std()))
-    loss_all = np.concatenate(losses)
-    print('total rec error: %6.3f+/-%6.3f' % (loss_all.mean(), loss_all.std()))
+        _, prediction = torch.max(class_, 1)
+        loss_r_all.append(loss_r_.item())
+        # im_1 = tensor2array(inputs[0])
+        # im_2 = np.maximum(np.minimum(1.0, tensor2array(image_[0])), 0.0)
+        # im_ = np.concatenate([im_1, im_2], axis=2)
+        # im_ = im_.transpose([1, 2, 0])
+        # plt.clf()
+        # plt.imshow(im_)
+        # plt.pause(1)
+    loss_r_all = np.array(loss_r_all)
+    print('rec error on false class: %6.3f +/- %6.3f' % (loss_r_all.mean(), loss_r_all.std()))
 
 
 if __name__ == '__main__':
@@ -363,5 +364,6 @@ if __name__ == '__main__':
     assert total_class%split_class == 0
     # for split_id in range(int(total_class/split_class)):
     #     train_mnist_split(split_id, split_class)
-    train_mnist_split(1, split_class)
-    #test_mnist_split(0, split_class)
+    #train_mnist_split(2, split_class)
+    #test_mnist_split(1, split_class)
+    predict_mnist_split(0, split_class)

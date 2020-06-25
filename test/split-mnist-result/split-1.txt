@@ -1,0 +1,3 @@
+test accuracy:  0.994
+rec error on positive:  0.037 +/-  0.012
+rec error on negative:  0.063 +/-  0.021
