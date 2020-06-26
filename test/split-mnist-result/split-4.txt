@@ -1,3 +1,5 @@
 test accuracy:  0.996
 rec error on positive:  0.037 +/-  0.013
 rec error on negative:  0.050 +/-  0.017
+
+rec error on false class:  0.067 +/-  0.024

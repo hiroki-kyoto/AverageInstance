@@ -1,3 +1,5 @@
 test accuracy:  1.000
 rec error on positive:  0.031+/- 0.017
 rec error on negative:    nan+/-   nan
+
+rec error on false class:  0.097 +/-  0.025

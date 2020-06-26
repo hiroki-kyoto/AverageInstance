@@ -315,47 +315,45 @@ def test_mnist_split(split_id: int, split_class: int):
         print('rec error on negative: %6.3f +/- %6.3f' % (loss_r_neg.mean(), loss_r_neg.std()))
 
 
-def predict_mnist_split(split_id: int, split_class: int):
+def predict_mnist_split(all_class: int, split_class: int):
+    assert all_class % split_class == 0
+    num_split = int(all_class / split_class)
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('test_device:{}'.format(device.type))
-    net = TrustedMobileNetV2(pretrained=False)
-    net.load_params('../Models/ClassifierEstimator/SplitMNIST/mnist-split-%d.pth' % split_id, device)
-    net.to(device)
+    nets = []
+    for i in range(num_split):
+        nets.append(TrustedMobileNetV2(pretrained=False))
+        nets[i].load_params('../Models/ClassifierEstimator/SplitMNIST/mnist-split-%d.pth' % i, device)
+        nets[i].to(device)
     loss_r = nn.L1Loss(reduction='mean')
 
     # setup dataset
     test_dataloader = load_mnist(is_train=False)
     # test procedure
-    loss_r_all = []
     for i, sample_batch in enumerate(test_dataloader):
         inputs = sample_batch[0]
         labels = sample_batch[1]
-        inputs = sample_batch[0]
-        labels = sample_batch[1]
-        if np.floor(labels.detach().numpy()[0] / 2) == split_id:
-            continue
         if inputs.shape[1] == 1:
             inputs = torch.cat([inputs, inputs, inputs], dim=1)
-        labels = torch.from_numpy(labels.detach().numpy() - split_id * split_class)
-
         # foward
         inputs = inputs.to(device)
         labels = labels.to(device)
-        net.eval()
-        class_, image_ = net(inputs)
-        class_ = torch.softmax(class_, 1, torch.float32)
-        loss_r_ = loss_r(image_, inputs)
-        _, prediction = torch.max(class_, 1)
-        loss_r_all.append(loss_r_.item())
-        # im_1 = tensor2array(inputs[0])
-        # im_2 = np.maximum(np.minimum(1.0, tensor2array(image_[0])), 0.0)
-        # im_ = np.concatenate([im_1, im_2], axis=2)
-        # im_ = im_.transpose([1, 2, 0])
-        # plt.clf()
-        # plt.imshow(im_)
-        # plt.pause(1)
-    loss_r_all = np.array(loss_r_all)
-    print('rec error on false class: %6.3f +/- %6.3f' % (loss_r_all.mean(), loss_r_all.std()))
+
+        pred = np.zeros([num_split], dtype=np.int32)
+        prob = np.zeros([num_split], dtype=np.float32)
+        correct_num = 0
+        all_num = 0
+
+        for split_id in range(num_split):
+            nets[split_id].eval()
+            class_, image_ = nets[split_id](inputs)
+            loss_r_ = loss_r(image_, inputs)
+            pred[split_id] = np.argmax(class_.detach().numpy()[0]) + split_class * split_id
+            prob[split_id] = loss_r_.detach().numpy()
+        correct_num += (pred[np.argmax(prob)] == labels.detach().numpy()[0])
+        all_num += 1
+
+    print('test accuracy: %6.3f' % (1.0*correct_num / all_num))
 
 
 if __name__ == '__main__':
@@ -366,4 +364,4 @@ if __name__ == '__main__':
     #     train_mnist_split(split_id, split_class)
     #train_mnist_split(2, split_class)
     #test_mnist_split(1, split_class)
-    predict_mnist_split(0, split_class)
+    predict_mnist_split(total_class, split_class)
