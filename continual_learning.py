@@ -337,7 +337,7 @@ def predict_mnist_split(all_class: int, split_class: int):
             inputs = torch.cat([inputs, inputs, inputs], dim=1)
         # foward
         inputs = inputs.to(device)
-        labels = labels.to(device)
+        #labels = labels.to(device)
 
         pred = np.zeros([num_split], dtype=np.int32)
         prob = np.zeros([num_split], dtype=np.float32)
@@ -350,7 +350,7 @@ def predict_mnist_split(all_class: int, split_class: int):
             loss_r_ = loss_r(image_, inputs)
             pred[split_id] = np.argmax(class_.detach().cpu().numpy()[0]) + split_class * split_id
             prob[split_id] = loss_r_.detach().cpu().numpy()
-        correct_num += (pred[np.argmax(prob)] == labels.detach().numpy()[0])
+        correct_num += (pred[np.argmax(prob)] == labels.detach().cpu().numpy()[0])
         all_num += 1
 
     print('test accuracy: %6.3f' % (1.0*correct_num / all_num))
