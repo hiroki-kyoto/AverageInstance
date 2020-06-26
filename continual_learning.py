@@ -348,8 +348,8 @@ def predict_mnist_split(all_class: int, split_class: int):
             nets[split_id].eval()
             class_, image_ = nets[split_id](inputs)
             loss_r_ = loss_r(image_, inputs)
-            pred[split_id] = np.argmax(class_.detach().numpy()[0]) + split_class * split_id
-            prob[split_id] = loss_r_.detach().numpy()
+            pred[split_id] = np.argmax(class_.detach().cpu().numpy()[0]) + split_class * split_id
+            prob[split_id] = loss_r_.detach().cpu().numpy()
         correct_num += (pred[np.argmax(prob)] == labels.detach().numpy()[0])
         all_num += 1
 
