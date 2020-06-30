@@ -389,56 +389,76 @@ def load_hdf5(path, subdir):
     return datasets
 
 
-def save_svhn_as_single_digit(root, is_train):
+def make_svhn_dataset(root:str, is_train:bool):
+    #fn = 'svhn-annotation.npy'
     sub_ = ['test', 'train'][int(is_train)]
     svhn = load_hdf5(root, sub_)
-    # np.save(fn, svhn)
-    pass
-
-
-def check_svhn_dataset(root:str, is_train:bool):
-    fn = 'svhn-annotation.npy'
-    #sub_ = ['test', 'train'][int(is_train)]
-    #svhn = load_hdf5(root, sub_)
     #np.save(fn, svhn)
-    svhn = np.load(fn, allow_pickle=True)
-    print(svhn.shape)
+    #exit(0)
+    #svhn = np.load(fn, allow_pickle=True)
+    print('SVHN matlab formatted annotations are loaded!')
+    print('SVHN %s dataset contains images: %d' % (sub_, len(svhn)))
 
     cmap = plt.get_cmap('tab20b')
     colors = [cmap(i) for i in np.linspace(0, 1, 20)]
 
-    for i in range(svhn.shape[0]):
+    for i in range(len(svhn)):
         im_ = np.array(Image.open('/'.join([svhn[i]['dir'], ''.join(list(svhn[i]['file']))])), np.float32)/255.0
-        plt.clf()
-        ax = plt.axes()
-        ax.imshow(im_)
+        # plt.clf()
+        # ax = plt.axes()
+        # ax.imshow(im_)
         assert len(im_.shape) == 3 and im_.shape[2] == 3
         im_w = im_.shape[1]
         im_h = im_.shape[0]
         labels = np.int32([x % 10 for x in svhn[i]['boxes']['label']])
-        y1 = np.maximum(np.float32(svhn[i]['boxes']['top']), 0)
-        x1 = np.maximum(np.float32(svhn[i]['boxes']['left']), 0)
-        box_w = np.minimum(np.float32(svhn[i]['boxes']['width']), im_w - x1 - 1)
-        box_h = np.minimum(np.float32(svhn[i]['boxes']['height']), im_h - y1 - 1)
-        bbox_colors = random.sample(colors, labels.shape[0])
+        y1 = np.maximum(np.int32(svhn[i]['boxes']['top']), 0)
+        x1 = np.maximum(np.int32(svhn[i]['boxes']['left']), 0)
+        box_w = np.minimum(np.int32(svhn[i]['boxes']['width']), im_w - x1 - 1)
+        box_h = np.minimum(np.int32(svhn[i]['boxes']['height']), im_h - y1 - 1)
+        # bbox_colors = random.sample(colors, labels.shape[0])
+        # for ind in range(labels.shape[0]):
+        #     bbox = patches.Rectangle((x1[ind], y1[ind]),
+        #                              box_w[ind], box_h[ind],
+        #                              linewidth=2,
+        #                              edgecolor=bbox_colors[ind],
+        #                              facecolor='none')
+        #     ax.add_patch(bbox)
+        #     plt.text(x1[ind], y1[ind],
+        #              s=str(labels[ind]),
+        #              color='white',
+        #              verticalalignment='top',
+        #              bbox={'color': bbox_colors[ind], 'pad': 0})
+        # plt.pause(1)
+        # save images of single figure
         for ind in range(labels.shape[0]):
-            bbox = patches.Rectangle((x1[ind], y1[ind]),
-                                     box_w[ind], box_h[ind],
-                                     linewidth=2,
-                                     edgecolor=bbox_colors[ind],
-                                     facecolor='none')
-            ax.add_patch(bbox)
-            plt.text(x1[ind], y1[ind],
-                     s=str(labels[ind]),
-                     color='white',
-                     verticalalignment='top',
-                     bbox={'color': bbox_colors[ind], 'pad': 0})
-        plt.pause(1)
+            patch_ = np.uint8(im_[y1[ind]:y1[ind]+box_h[ind], x1[ind]:x1[ind]+box_w[ind]] * 255)
+            # padding for ratio holding 1/1
+            if patch_.shape[0] > patch_.shape[1]:
+                max_ = patch_.shape[0]
+                min_ = patch_.shape[1]
+                pad_left = (max_ - min_) // 2
+                pad_right = max_ - min_ - pad_left
+                patch_new = np.zeros([max_, max_, patch_.shape[2]], np.uint8)
+                patch_new[:, pad_left:max_-pad_right, :] = patch_[:, :, :]
+            else:
+                min_ = patch_.shape[0]
+                max_ = patch_.shape[1]
+                pad_up = (max_ - min_) // 2
+                pad_down = max_ - min_ - pad_up
+                patch_new = np.zeros([max_, max_, patch_.shape[2]], np.uint8)
+                patch_new[pad_up:max_ - pad_down, :, :] = patch_[:, :, :]
+
+            file_ = list(svhn[i]['file'])
+            file_.insert(1, '_%d' % ind)
+            file_ = ''.join(file_)
+            path_ = '/'.join([svhn[i]['dir'] + '-svhn/%d' % labels[ind], file_])
+            Image.fromarray(patch_new).save(path_)
+    print('SVHN dataset conversion completed!')
     exit(0)
 
 
 if __name__ == '__main__':
-    check_svhn_dataset('../Datasets/SVHN/', is_train=True)
+    make_svhn_dataset('../Datasets/SVHN/', is_train=False)
     exit(0)
 
     total_class = 10
