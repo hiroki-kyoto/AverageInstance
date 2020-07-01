@@ -17,6 +17,9 @@ import os
 #plt.rcParams['axes.unicode_minus'] = False
 
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+
+
 def make_weights_for_balanced_classes(
         images: list,
         nclasses: int,
