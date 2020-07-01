@@ -5,39 +5,61 @@ import torch
 import torchvision
 from torch import nn as nn
 import imagenet_classes as imagenet
-from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
+from torch.utils.data import DataLoader, sampler
+#import matplotlib.pyplot as plt
+#import matplotlib.patches as patches
 import h5py
 from PIL import Image
 import random
+import os
 
-plt.rcParams['font.sans-serif']=['SimHei']
-plt.rcParams['axes.unicode_minus'] = False
-
-
-def load_svhn(is_train: bool):
-    root = '../Datasets/'
-    data_loader = torch.utils.data.DataLoader(
-        torchvision.datasets.MNIST(
-            root,
-            train=is_train,
-            download=True,
-            transform=torchvision.transforms.Compose([
-                torchvision.transforms.Resize(224),
-                torchvision.transforms.ToTensor()
-            ])))
-    return data_loader
+#plt.rcParams['font.sans-serif']=['SimHei']
+#plt.rcParams['axes.unicode_minus'] = False
 
 
-def load_dataset(data_dir):
+def make_weights_for_balanced_classes(
+        images: list,
+        nclasses: int,
+        num_split: int,
+        split_id: int):
+    assert nclasses % num_split == 0
+    group_size = nclasses//num_split
+    count = [0] * group_size
+    for item in images:
+        if item[1]//group_size == split_id:
+            count[item[1] % group_size] += 1
+    weight_per_class = [0.] * group_size
+    N = float(sum(count))
+    for i in range(group_size):
+        weight_per_class[i] = N/float(count[i])
+    weight = [0] * len(images)
+    for idx, val in enumerate(images):
+        if val[1]//group_size == split_id:
+            weight[idx] = weight_per_class[val[1] % group_size]
+    return weight
+
+
+def load_svhn(is_train: bool, n_split: int, split_id: int):
+    root = '../Datasets/SVHN/' + ['test-svhn', 'train-svhn'][is_train]
     dataset = torchvision.datasets.ImageFolder(
-        root=data_dir,
+        root=root,
         transform=torchvision.transforms.Compose([
-            torchvision.transforms.Resize((224, 224)),
+            torchvision.transforms.Resize(224), # w/h ratio = 1:1
             torchvision.transforms.ToTensor()
         ]))
-    return dataset
+    if is_train:
+        w_ = make_weights_for_balanced_classes(dataset.imgs, len(dataset.classes), n_split, split_id)
+        data_loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=1,
+            sampler=[None, sampler.WeightedRandomSampler(w_, len(w_))][is_train])
+    else:
+        data_loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=1,
+            shuffle=False)
+
+    return data_loader
 
 
 def set_freeze_by_names(model, layer_names, freeze=True):
@@ -168,7 +190,7 @@ def train_svhn_split(split_id: int, split_class: int):
     loss_c = nn.CrossEntropyLoss(reduction='mean')
     loss_r = nn.L1Loss(reduction='mean')
     opt = torch.optim.Adam(net.parameters(), lr=1E-4)
-    train_dataloader = load_mnist(True)
+    train_dataloader = load_svhn(True, 10//split_class, split_id)
 
     # training procedure
     num_epochs = 500
@@ -184,8 +206,6 @@ def train_svhn_split(split_id: int, split_class: int):
                 inputs = torch.cat([inputs, inputs, inputs], dim=1)
             # print(labels.detach().numpy())
             labels = torch.from_numpy(labels.detach().numpy() - split_id * split_class)
-            # print(labels.detach().numpy())
-            # print(inputs.shape)
             # im_ = tensor2array(inputs)[0]
             # im_ = im_.transpose([1, 2, 0])
             # plt.title(str(labels.detach().numpy()[0]))
@@ -250,7 +270,7 @@ def train_svhn_split(split_id: int, split_class: int):
         print('#{:6d} train accuracy={:.5f}'.format(epoch + 1, 1.0 * correct / total))
         # save models
         print('saving models...')
-        torch.save(net.state_dict(), '../Models/ClassifierEstimator/SplitMNIST/mnist-split-%d.pth' % split_id)
+        torch.save(net.state_dict(), '../Models/ClassifierEstimator/SplitSVHN/svhn-split-%d.pth' % split_id)
         print('models saved at epoch #%d' % (epoch + 1))
     print('training finished!')
 
@@ -259,12 +279,12 @@ def test_svhn_split(split_id: int, split_class: int):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('test_device:{}'.format(device.type))
     net = TrustedMobileNetV2(pretrained=False)
-    net.load_params('../Models/ClassifierEstimator/SplitMNIST/mnist-split-%d.pth' % split_id, device)
+    net.load_params('../Models/ClassifierEstimator/SplitSVHN/svhn-split-%d.pth' % split_id, device)
     net.to(device)
     loss_r = nn.L1Loss(reduction='mean')
 
     # setup dataset
-    test_dataloader = load_mnist(is_train=False)
+    test_dataloader = load_svhn(False, 10//split_class, split_id)
     # test procedure
     loss_r_pos = []
     loss_r_neg = []
@@ -327,12 +347,12 @@ def predict_svhn_split(all_class: int, split_class: int):
     nets = []
     for i in range(num_split):
         nets.append(TrustedMobileNetV2(pretrained=False))
-        nets[i].load_params('../Models/ClassifierEstimator/SplitMNIST/mnist-split-%d.pth' % i, device)
+        nets[i].load_params('../Models/ClassifierEstimator/SplitSVHN/svhn-split-%d.pth' % i, device)
         nets[i].to(device)
     loss_r = nn.L1Loss(reduction='mean')
 
     # setup dataset
-    test_dataloader = load_mnist(is_train=False)
+    test_dataloader = load_svhn(False, 10//split_class, -1)
     # test procedure
     for i, sample_batch in enumerate(test_dataloader):
         inputs = sample_batch[0]
@@ -361,8 +381,6 @@ def predict_svhn_split(all_class: int, split_class: int):
     print('test accuracy: %6.3f' % (1.0*correct_num / all_num))
 
 
-
-import os
 def load_hdf5(path, subdir):
     print('process folder : %s' % subdir)
     filenames = []
@@ -399,8 +417,8 @@ def make_svhn_dataset(root:str, is_train:bool):
     print('SVHN matlab formatted annotations are loaded!')
     print('SVHN %s dataset contains images: %d' % (sub_, len(svhn)))
 
-    cmap = plt.get_cmap('tab20b')
-    colors = [cmap(i) for i in np.linspace(0, 1, 20)]
+    #cmap = plt.get_cmap('tab20b')
+    #colors = [cmap(i) for i in np.linspace(0, 1, 20)]
 
     for i in range(len(svhn)):
         im_ = np.array(Image.open('/'.join([svhn[i]['dir'], ''.join(list(svhn[i]['file']))])), np.float32)/255.0
@@ -458,14 +476,14 @@ def make_svhn_dataset(root:str, is_train:bool):
 
 
 if __name__ == '__main__':
-    make_svhn_dataset('../Datasets/SVHN/', is_train=False)
-    exit(0)
+    #make_svhn_dataset('../Datasets/SVHN/', is_train=False)
+    #exit(0)
 
     total_class = 10
     split_class = 2
-    assert total_class%split_class == 0
+    assert total_class % split_class == 0
     # for split_id in range(int(total_class/split_class)):
-    #     train_mnist_split(split_id, split_class)
-    #train_svhn_split(2, split_class)
-    #test_svhn_split(1, split_class)
+    #     train_svhn_split(split_id, split_class)
+    train_svhn_split(0, split_class)
+    #test_svhn_split(0, split_class)
     #predict_svhn_split(total_class, split_class)
