@@ -345,17 +345,30 @@ def predict_mnist_split(all_class: int, split_class: int):
         #labels = labels.to(device)
 
         pred = np.zeros([num_split], dtype=np.int32)
-        prob = np.zeros([num_split], dtype=np.float32)
+        err_ = np.zeros([num_split], dtype=np.float32)
+        imgs = np.zeros([num_split, 3, inputs.shape[2], inputs.shape[3]], dtype=np.float32)
 
         for split_id in range(num_split):
             nets[split_id].eval()
             class_, image_ = nets[split_id](inputs)
             loss_r_ = loss_r(image_, inputs)
             pred[split_id] = np.argmax(class_.detach().cpu().numpy()[0]) + split_class * split_id
-            prob[split_id] = loss_r_.detach().cpu().numpy()
-        correct_num += (pred[np.argmin(prob)] == labels.detach().cpu().numpy()[0])
+            err_[split_id] = loss_r_.detach().cpu().numpy()
+            imgs[split_id] = np.maximum(np.minimum(image_.detach().cpu().numpy()[0], 1.0), 0.0)
+        correct_num += (pred[np.argmin(err_)] == labels.detach().cpu().numpy()[0])
         all_num += 1
-        #print('pred: %d gt: %d' %(pred[np.argmin(prob)], labels.detach().cpu().numpy()[0]))
+        if not pred[np.argmin(err_)] == labels.detach().cpu().numpy()[0]:
+            print('pred: %d gt: %d' % (pred[np.argmin(err_)], labels.detach().cpu().numpy()[0]))
+            im_gt = tensor2array(inputs[0])
+            im_rc = imgs[np.argmin(err_)]
+            im_ep = imgs[labels.detach().cpu().numpy()[0]//split_class]
+            im_ = np.concatenate([im_gt, im_rc, im_ep], axis=2)
+            im_ = im_.transpose([1, 2, 0])
+            #plt.clf()
+            plt.imshow(im_)
+            plt.title('L-M-R: Groundtruth-Predicted-Expected')
+            #plt.pause(1)
+            plt.show()
     print('correct: %d\t total: %d' % (correct_num, all_num))
     print('test accuracy: %6.5f' % (1.0*correct_num / all_num))
 
