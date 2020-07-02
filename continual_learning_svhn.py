@@ -489,6 +489,6 @@ if __name__ == '__main__':
     assert total_class % split_class == 0
     # for split_id in range(int(total_class/split_class)):
     #     train_svhn_split(split_id, split_class)
-    train_svhn_split(1, split_class)
-    #test_svhn_split(1, split_class)
+    #train_svhn_split(1, split_class)
+    test_svhn_split(1, split_class)
     #predict_svhn_split(total_class, split_class)
