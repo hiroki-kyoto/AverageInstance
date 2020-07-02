@@ -7,6 +7,8 @@ from torch import nn as nn
 import imagenet_classes as imagenet
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 plt.rcParams['font.sans-serif']=['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
