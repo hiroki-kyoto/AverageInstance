@@ -335,11 +335,12 @@ def test_svhn_split(split_id: int, split_class: int):
     loss_r_pos = np.array(loss_r_pos)
     loss_r_neg = np.array(loss_r_neg)
     total = loss_r_pos.shape[0] + loss_r_neg.shape[0]
-    print('test accuracy: %6.3f' % (loss_r_pos.shape[0]*1.0 / total))
+    print('correct: %d\t total: %d' % (loss_r_pos.shape[0], total))
+    print('test accuracy: %6.5f' % (loss_r_pos.shape[0]*1.0 / total))
     if loss_r_pos.shape[0] > 0:
-        print('rec error on positive: %6.3f +/- %6.3f' % (loss_r_pos.mean(), loss_r_pos.std()))
+        print('rec error on positive: %6.5f +/- %6.5f' % (loss_r_pos.mean(), loss_r_pos.std()))
     if loss_r_neg.shape[0] > 0:
-        print('rec error on negative: %6.3f +/- %6.3f' % (loss_r_neg.mean(), loss_r_neg.std()))
+        print('rec error on negative: %6.5f +/- %6.5f' % (loss_r_neg.mean(), loss_r_neg.std()))
 
 
 def predict_svhn_split(all_class: int, split_class: int):
@@ -357,6 +358,8 @@ def predict_svhn_split(all_class: int, split_class: int):
     # setup dataset
     test_dataloader = load_svhn(False, 10//split_class, -1)
     # test procedure
+    correct_num = 0
+    all_num = 0
     for i, sample_batch in enumerate(test_dataloader):
         inputs = sample_batch[0]
         labels = sample_batch[1]
@@ -368,8 +371,6 @@ def predict_svhn_split(all_class: int, split_class: int):
 
         pred = np.zeros([num_split], dtype=np.int32)
         prob = np.zeros([num_split], dtype=np.float32)
-        correct_num = 0
-        all_num = 0
 
         for split_id in range(num_split):
             nets[split_id].eval()
@@ -379,9 +380,10 @@ def predict_svhn_split(all_class: int, split_class: int):
             prob[split_id] = loss_r_.detach().cpu().numpy()
         correct_num += (pred[np.argmin(prob)] == labels.detach().cpu().numpy()[0])
         all_num += 1
-        print('pred: %d gt: %d' %(pred[np.argmin(prob)], labels.detach().cpu().numpy()[0]))
+        #print('pred: %d gt: %d' %(pred[np.argmin(prob)], labels.detach().cpu().numpy()[0]))
 
-    print('test accuracy: %6.3f' % (1.0*correct_num / all_num))
+    print('correct: %d\t total: %d' % (correct_num, all_num))
+    print('test accuracy: %6.5f' % (1.0*correct_num / all_num))
 
 
 def load_hdf5(path, subdir):
@@ -487,6 +489,6 @@ if __name__ == '__main__':
     assert total_class % split_class == 0
     # for split_id in range(int(total_class/split_class)):
     #     train_svhn_split(split_id, split_class)
-    train_svhn_split(0, split_class)
-    #test_svhn_split(0, split_class)
+    train_svhn_split(1, split_class)
+    #test_svhn_split(1, split_class)
     #predict_svhn_split(total_class, split_class)
