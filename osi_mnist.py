@@ -3,13 +3,15 @@ from collections.abc import Iterable
 import numpy as np
 import torchvision
 from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from torch_ops import *
 
 
-plt.rcParams['font.sans-serif']=['SimHei']
-plt.rcParams['axes.unicode_minus'] = False
-select_gpus_from_user_input()
+#plt.rcParams['font.sans-serif']=['SimHei']
+#plt.rcParams['axes.unicode_minus'] = False
+
+# gpu and batch size are set up here
+args = process_args()
 
 
 # Requirement: 
@@ -26,7 +28,8 @@ def load_mnist(is_train: bool):
             root,
             train=is_train,
             download=True,
-            transform=torchvision.transforms.ToTensor()))
+            transform=torchvision.transforms.ToTensor()),
+        batch_size=args.batch)
     return data_loader
 
 
@@ -203,7 +206,7 @@ def MNIST_TrainAutoEncoder():
             opt_enc.step()
             opt_dec.step()
             running_loss_r += loss_r_.item()
-            every_n_batch = 10
+            every_n_batch = 100
             if not (i + 1) % every_n_batch:
                 print('[{}, {}] loss_r={:.5f}'.format(
                     epoch + 1,

@@ -6,7 +6,7 @@ import torch.nn as nn
 import torchvision.transforms.functional as F
 
 
-def select_gpus_from_user_input():
+def process_args():
     parser = argparse.ArgumentParser()
     parser.description = 'specify gpus, example: 0,2'
     parser.add_argument("-g", "--gpu", 
@@ -14,10 +14,17 @@ def select_gpus_from_user_input():
                         dest="gpu", 
                         type=str, 
                         required=True)
+    parser.add_argument("-b", "--batch",
+                        help="batch size",
+                        dest="batch",
+                        type=int,
+                        required=True)
     args = parser.parse_args()
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
-    print('using gpus: %s' % (args.gpu))
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+    print('using gpus: %s' % args.gpu)
+    print('batch size: %d' % args.batch)
+    return args
 
 
 def conv(depth, nfilter, ksize=3, stride=1, 
