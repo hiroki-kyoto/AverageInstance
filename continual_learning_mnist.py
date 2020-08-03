@@ -1,4 +1,4 @@
-# mobilenet_v2.py
+# continual_learning_mnist.py
 from collections.abc import Iterable
 import numpy as np
 import torch
@@ -8,7 +8,17 @@ import imagenet_classes as imagenet
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+
+# specify a gpu
+import argparse
+parser = argparse.ArgumentParser()
+parser.description = 'specify gpu id[0,1,2,...]'
+parser.add_argument("-g", "--gpu", help="gpu id", dest="gpu", type=int, required=True)
+args = parser.parse_args()
+
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+print('using gpu #%d ' % (args.gpu))
+
 
 plt.rcParams['font.sans-serif']=['SimHei']
 plt.rcParams['axes.unicode_minus'] = False

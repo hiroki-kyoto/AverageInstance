@@ -19,7 +19,6 @@ import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
-
 def make_weights_for_balanced_classes(
         images: list,
         nclasses: int,
@@ -41,6 +40,10 @@ def make_weights_for_balanced_classes(
             weight[idx] = weight_per_class[val[1] % group_size]
     return weight
 
+
+# TO-DO:
+# 1. use shuffle and low resolution 32x32, remove resize op
+# 2. use a low-resolution resnet to train from scratch
 
 def load_svhn(is_train: bool, n_split: int, split_id: int):
     root = '../Datasets/SVHN/' + ['test-svhn', 'train-svhn'][is_train]

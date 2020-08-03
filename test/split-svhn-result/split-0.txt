@@ -1,4 +1,0 @@
-correct: 6479    total: 6843
-test accuracy: 0.94681
-rec error on positive: 0.03459 +/- 0.02549
-rec error on negative: 0.04372 +/- 0.03553

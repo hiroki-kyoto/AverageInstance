@@ -1,4 +1,4 @@
-# classifier
+# classifier.py
 import tensorflow
 if tensorflow.__version__ >= '2.0':
     import tensorflow.compat.v1 as tf
