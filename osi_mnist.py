@@ -3,12 +3,12 @@ from collections.abc import Iterable
 import numpy as np
 import torchvision
 from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from torch_ops import *
 from PIL import Image
 
-plt.rcParams['font.sans-serif']=['SimHei']
-plt.rcParams['axes.unicode_minus'] = False
+#plt.rcParams['font.sans-serif']=['SimHei']
+#plt.rcParams['axes.unicode_minus'] = False
 
 # gpu and batch size are set up here
 args = process_args()
@@ -336,8 +336,8 @@ def MNIST_TrainRestrictedAutoEncoder(data_path: str):
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('train_device:{}'.format(device.type))
-    encoder.to(device)
-    decoder.to(device)
+    encoder = encoder.to(device)
+    decoder = decoder.to(device)
 
     opt_enc = torch.optim.Adam(encoder.parameters(), lr=1E-4)
     opt_dec = torch.optim.Adam(decoder.parameters(), lr=1E-4)
@@ -351,7 +351,7 @@ def MNIST_TrainRestrictedAutoEncoder(data_path: str):
     # training procedure
     encoder.train()
     decoder.train()
-    num_epochs = 1000
+    num_epochs = 10000
     num_samples = labels.shape[0]
     save_n_epoch = 10
 
