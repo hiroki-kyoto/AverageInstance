@@ -3,12 +3,12 @@ from collections.abc import Iterable
 import numpy as np
 import torchvision
 from torch.utils.data import DataLoader
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from torch_ops import *
+from PIL import Image
 
-
-#plt.rcParams['font.sans-serif']=['SimHei']
-#plt.rcParams['axes.unicode_minus'] = False
+plt.rcParams['font.sans-serif']=['SimHei']
+plt.rcParams['axes.unicode_minus'] = False
 
 # gpu and batch size are set up here
 args = process_args()
@@ -21,7 +21,7 @@ args = process_args()
 #    cropping, padding, resizing
 #    normalization can be done later on GPUs, 
 #    never, ever do these on CPUs!
-def load_mnist(is_train: bool):
+def load_mnist(is_train: bool, batch_size: int):
     root = '../Datasets/'
     data_loader = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST(
@@ -29,7 +29,7 @@ def load_mnist(is_train: bool):
             train=is_train,
             download=True,
             transform=torchvision.transforms.ToTensor()),
-        batch_size=args.batch)
+        batch_size=batch_size)
     return data_loader
 
 
@@ -120,7 +120,7 @@ class MNIST_Decoder(nn.Module):
 
     def load_params(self, model_path, device):
         state_dict = torch.load(model_path, map_location=device)
-        self.mobilenet.load_state_dict(state_dict)
+        self.load_state_dict(state_dict)
 
 
 # A Latent Auto Encoder is decomposed into encoder and decoder
@@ -179,7 +179,7 @@ def MNIST_TrainAutoEncoder():
     opt_enc = torch.optim.Adam(encoder.parameters(), lr=1E-4)
     opt_dec = torch.optim.Adam(decoder.parameters(), lr=1E-4)
 
-    train_dataloader = load_mnist(True)
+    train_dataloader = load_mnist(True, args.batch)
 
     # training procedure
     encoder.train()
@@ -215,13 +215,230 @@ def MNIST_TrainAutoEncoder():
                 running_loss_r = 0.0
         # save models
         print('saving models...')
-        torch.save(encoder.state_dict(),
-                   '../Models/ClassifierEstimator/mnist_encoder.pth')
-        torch.save(decoder.state_dict(),
-                   '../Models/ClassifierEstimator/mnist_decoder.pth')
+        model_dir = '../Models/ClassifierEstimator/osi-mnist'
+        torch.save(encoder.state_dict(), model_dir + '/mnist_encoder.pth')
+        torch.save(decoder.state_dict(), model_dir + '/mnist_decoder.pth')
         print('models saved at epoch #%d' % (epoch + 1))
     print('training finished!')
 
 
+def MNIST_TestAutoEncoder():
+    """
+    test an pretrained auto-encoder on MNIST dataset
+    """
+    # build model
+    encoder = MNIST_Encoder()
+    decoder = MNIST_Decoder()
+
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print('test_device:{}'.format(device.type))
+    encoder.to(device)
+    decoder.to(device)
+
+    # restore parameters
+    model_dir = '../Models/ClassifierEstimator/osi-mnist'
+    encoder.load_params(model_dir + '/mnist_encoder.pth', device)
+    decoder.load_params(model_dir + '/mnist_decoder.pth', device)
+
+    loss_r = nn.L1Loss(reduction='mean')
+    test_dataloader = load_mnist(False, 1)
+
+    encoder.eval()
+    decoder.eval()
+    all_loss_r = np.zeros([len(test_dataloader.dataset)])
+    print(all_loss_r.shape)
+
+    for i, sample_batch in enumerate(test_dataloader):
+        x = sample_batch[0]
+        # # add noise to input
+        # noise = torch.Tensor(np.random.normal(0.0, 0.3, x.shape))
+        # noise = noise * (1-x)
+        # x = x + noise
+
+        # # add a unknown pattern
+        # bg_ = Image.open('test/osi-mnist/demo.jpg', 'r')
+        # bg_ = np.array(bg_, dtype=np.float32) / 255
+        # bg_ = torch.Tensor(bg_)
+        # x = torch.min(x + bg_,
+        #               torch.Tensor(np.ones(bg_.shape, dtype=np.float32)))
+
+        # foward
+        x = x.to(device)
+        z = encoder(x)
+        x_r = decoder(z)
+
+        # # visualize
+        # im_ = tensor2array(x)[0][0]
+        # im_r = tensor2array(x_r)[0][0]
+        # im_ = np.concatenate([im_, im_r], axis=1)
+        # plt.imshow(im_)
+        # plt.show()
+
+        loss_r_ = loss_r(x_r, x)
+        all_loss_r[i] = loss_r_.item()
+    # show overall information
+    print('test error: %6.5f +/- %6.5f' % (all_loss_r.mean() , all_loss_r.std()))
+    # draw the error histogram
+
+
+def MNIST_SaveTrainingLatentCodes(path: str):
+    """
+    prepare training dataset for the restricted Auto Encoder
+    :param path: the path of training dataset to save
+    :return: nul
+    """
+    # build model
+    encoder = MNIST_Encoder()
+
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print('test_device:{}'.format(device.type))
+    encoder.to(device)
+
+    # restore parameters
+    model_dir = '../Models/ClassifierEstimator/osi-mnist'
+    encoder.load_params(model_dir + '/mnist_encoder.pth', device)
+
+    batch_size = 16
+    test_dataloader = load_mnist(True, batch_size)
+
+    # training procedure
+    encoder.eval()
+    latents = np.zeros([len(test_dataloader.dataset), 8], dtype=np.float32)
+    labels = np.zeros([latents.shape[0]], dtype=np.int32)
+    for i, sample_batch in enumerate(test_dataloader):
+        x = sample_batch[0]
+        y = sample_batch[1]
+        # foward
+        x = x.to(device)
+        z = encoder(x)
+        # append to the dataset
+        offset = batch_size * i
+        latents[offset:offset+batch_size, :] = z.cpu().detach().numpy()
+        labels[offset:offset+batch_size] = y.cpu().detach().numpy()
+    # save the numpy array
+    np.save(path, {'latents':latents, 'labels':labels})
+
+
+# normalized clustering loss
+# L2 instance distance to center / mean L2 distance to center
+def NormalizedClusterLoss(x, center, radius):
+    x = x - center
+    return torch.mean(torch.sum(x*x, dim=1) / (radius * radius))
+
+
+def MNIST_TrainRestrictedAutoEncoder(data_path: str):
+    """
+    train a restricted auto encoder on MNIST Latent vectors
+    """
+    # build model
+    encoder = MNIST_LatentEncoder()
+    decoder = MNIST_LatentEncoder()
+
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print('train_device:{}'.format(device.type))
+    encoder.to(device)
+    decoder.to(device)
+
+    opt_enc = torch.optim.Adam(encoder.parameters(), lr=1E-4)
+    opt_dec = torch.optim.Adam(decoder.parameters(), lr=1E-4)
+
+    # load latent codes
+    dataset = np.load(data_path, allow_pickle=True)
+    latents = dataset.item()['latents']
+    labels = dataset.item()['labels']
+    latents = torch.Tensor(latents).to(device)
+
+    # training procedure
+    encoder.train()
+    decoder.train()
+    num_epochs = 1000
+    num_samples = labels.shape[0]
+    save_n_epoch = 10
+
+    # explicit memory
+    n_class = 10
+    latent_dim = 8
+    batch_size = 32
+    cluster_centers = np.zeros([n_class, latent_dim], dtype=np.float32)
+    cluster_radius = np.zeros([n_class], dtype=np.float32)
+    centers = np.zeros([num_samples, latent_dim], dtype=np.float32)
+
+    for epoch in range(num_epochs):
+        print('distribution evaluation')
+        for i in range(num_samples//batch_size):
+            idx = i*batch_size
+            m = encoder(latents[idx:idx+batch_size, :])
+            m = m.cpu().detach().numpy()
+            centers[idx:idx+batch_size, :] = m[:, :]
+        for i in range(n_class):
+            mask = np.expand_dims(labels==i, axis=-1)
+            masked_centers = centers * mask
+            cluster_centers[i, :] = np.sum(masked_centers, axis=0) / np.sum(mask)
+            cluster_radius[i] = np.sqrt(np.sum(np.square(masked_centers-cluster_centers[i])) / (np.sum(mask)-1))
+        print('explicit memory loss: %6.3f +/- %6.3f' % (cluster_radius.mean(), cluster_radius.std()))
+
+        # training
+        running_loss = 0.0
+        running_loss_c = 0.0
+        running_loss_r = 0.0
+        every_n_batch = 100
+
+        seq = np.random.permutation(num_samples)
+        latents_perm = latents[seq]
+        labels_perm = labels[seq]
+        centers_perm = torch.Tensor(cluster_centers[labels_perm])
+        radius_perm = torch.Tensor(cluster_radius[labels_perm])
+        centers_perm.to(device)
+        radius_perm.to(device)
+
+        for i in range(num_samples // batch_size):
+            # forward
+            idx = i * batch_size
+            z = latents_perm[idx:idx+batch_size, :]
+            m = encoder(z)
+            loss_c = NormalizedClusterLoss(
+                m, centers_perm[idx:idx+batch_size], radius_perm[idx:idx+batch_size])
+            z_r = decoder(m)
+            loss_r = z_r - z
+            loss_r = torch.mean(torch.sum(loss_r*loss_r, dim=1))
+            loss = loss_c + loss_r
+
+            # backward
+            opt_enc.zero_grad()
+            opt_dec.zero_grad()
+            loss.backward()
+            opt_enc.step()
+            opt_dec.step()
+            running_loss += loss.item()
+            running_loss_c += loss_c.item()
+            running_loss_r += loss_r.item()
+
+            if (i + 1) % every_n_batch == 0:
+                print('[{}, {}] loss={:.5f} loss_c={:.5f} loss_r={:.5f}'.format(
+                    epoch + 1,
+                    i + 1,
+                    running_loss / every_n_batch,
+                    running_loss_c / every_n_batch,
+                    running_loss_r / every_n_batch
+                ))
+                running_loss = 0.0
+                running_loss_c = 0.0
+                running_loss_r = 0.0
+        # save models
+        if (epoch + 1) % save_n_epoch == 0:
+            print('saving models...')
+            model_dir = '../Models/ClassifierEstimator/osi-mnist'
+            torch.save(encoder.state_dict(), model_dir + '/mnist_encoder.pth')
+            torch.save(decoder.state_dict(), model_dir + '/mnist_decoder.pth')
+            print('models saved at epoch #%d' % (epoch + 1))
+
+    print('training finished!')
+
+
 if __name__ == '__main__':
-    MNIST_TrainAutoEncoder()
+    #MNIST_TrainAutoEncoder()
+    #MNIST_TestAutoEncoder()
+
+    latent_path = '../Datasets/MNIST/latent/latent_codes.npy'
+    #MNIST_SaveTrainingLatentCodes(latent_path)
+    MNIST_TrainRestrictedAutoEncoder(latent_path)
