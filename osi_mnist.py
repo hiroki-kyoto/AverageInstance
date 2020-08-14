@@ -388,8 +388,8 @@ def MNIST_TrainRestrictedAutoEncoder(data_path: str):
         labels_perm = labels[seq]
         centers_perm = torch.Tensor(cluster_centers[labels_perm])
         radius_perm = torch.Tensor(cluster_radius[labels_perm])
-        centers_perm.to(device)
-        radius_perm.to(device)
+        centers_perm = centers_perm.to(device)
+        radius_perm = radius_perm.to(device)
 
         for i in range(num_samples // batch_size):
             # forward
