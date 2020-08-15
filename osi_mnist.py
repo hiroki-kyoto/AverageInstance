@@ -172,8 +172,8 @@ def MNIST_TrainAutoEncoder():
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('train_device:{}'.format(device.type))
-    encoder.to(device)
-    decoder.to(device)
+    encoder = encoder.to(device)
+    decoder = decoder.to(device)
 
     loss_r = nn.L1Loss(reduction='mean')
     opt_enc = torch.optim.Adam(encoder.parameters(), lr=1E-4)
@@ -184,7 +184,7 @@ def MNIST_TrainAutoEncoder():
     # training procedure
     encoder.train()
     decoder.train()
-    num_epochs = 500
+    num_epochs = 1000
 
     for epoch in range(num_epochs):
         running_loss_r = 0
@@ -436,9 +436,9 @@ def MNIST_TrainRestrictedAutoEncoder(data_path: str):
 
 
 if __name__ == '__main__':
-    #MNIST_TrainAutoEncoder()
+    MNIST_TrainAutoEncoder()
     #MNIST_TestAutoEncoder()
 
-    latent_path = '../Datasets/MNIST/latent/latent_codes.npy'
+    #latent_path = '../Datasets/MNIST/latent/latent_codes.npy'
     #MNIST_SaveTrainingLatentCodes(latent_path)
-    MNIST_TrainRestrictedAutoEncoder(latent_path)
+    #MNIST_TrainRestrictedAutoEncoder(latent_path)
