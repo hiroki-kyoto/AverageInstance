@@ -544,8 +544,8 @@ def MNIST_TestRestrictedAutoEncoder(data_path: str):
 
 
 if __name__ == '__main__':
-    #MNIST_TrainAutoEncoder()
-    MNIST_TestAutoEncoder()
+    MNIST_TrainAutoEncoder()
+    #MNIST_TestAutoEncoder()
 
     #latent_path = '../Datasets/MNIST/latent/latent_codes.npy'
     #MNIST_SaveTrainingLatentCodes(latent_path)
