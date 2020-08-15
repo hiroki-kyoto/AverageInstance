@@ -184,7 +184,7 @@ def MNIST_TrainAutoEncoder():
     # training procedure
     encoder.train()
     decoder.train()
-    num_epochs = 1000
+    num_epochs = 10000
 
     for epoch in range(num_epochs):
         running_loss_r = 0
@@ -241,7 +241,7 @@ def MNIST_TestAutoEncoder():
     decoder.load_params(model_dir + '/mnist_decoder.pth', device)
 
     loss_r = nn.L1Loss(reduction='mean')
-    test_dataloader = load_mnist(False, 1)
+    test_dataloader = load_mnist(True, 1)
 
     encoder.eval()
     decoder.eval()
@@ -544,8 +544,8 @@ def MNIST_TestRestrictedAutoEncoder(data_path: str):
 
 
 if __name__ == '__main__':
-    MNIST_TrainAutoEncoder()
-    #MNIST_TestAutoEncoder()
+    #MNIST_TrainAutoEncoder()
+    MNIST_TestAutoEncoder()
 
     #latent_path = '../Datasets/MNIST/latent/latent_codes.npy'
     #MNIST_SaveTrainingLatentCodes(latent_path)
