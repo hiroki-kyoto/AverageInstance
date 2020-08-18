@@ -1,2 +1,22 @@
-train error: 0.03838 +/- 0.01810
-test error: 0.03868 +/- 0.01847
+# the 1st training
+# AE
+train error: 0.04273 +/- 0.01887
+test error: 0.04268 +/- 0.01880
+
+# latent code
+#training
+radius error: 0.01584 +/- 0.00243
+loss=0.07086 loss_c=0.07085 loss_r=0.00001
+classification accuracy: 0.87663
+
+# test
+radius error: 0.01550 +/- 0.00245
+loss=0.06818 loss_c=0.06813 loss_r=0.00005
+classification accuracy: 0.88880
+####################################################
+# the 2nd training
+# AE
+
+
+
+
