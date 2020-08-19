@@ -435,7 +435,7 @@ def MNIST_TrainRestrictedAutoEncoder(data_path: str):
     print('training finished!')
 
 
-def MNIST_TestRestrictedAutoEncoder(data_path: str):
+def MNIST_TestRestrictedAutoEncoder():
     """
     test a restricted auto encoder on MNIST test dataset
     """
@@ -587,12 +587,16 @@ def MNIST_TestRestrictedAutoEncoder(data_path: str):
     print('test finished!')
 
 
+def train_RAE_separately():
+    pass
+
+
 if __name__ == '__main__':
     #MNIST_TrainAutoEncoder()
     #MNIST_TestAutoEncoder()
 
-    latent_path = '../Datasets/MNIST/latent/latent_codes.npy'
+    #latent_path = '../Datasets/MNIST/latent/latent_codes.npy'
     #MNIST_SaveTrainingLatentCodes(latent_path)
     #MNIST_TrainRestrictedAutoEncoder(latent_path)
-    MNIST_TestRestrictedAutoEncoder(latent_path)
+    MNIST_TestRestrictedAutoEncoder()
 
