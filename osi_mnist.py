@@ -236,7 +236,7 @@ def MNIST_TestAutoEncoder():
     decoder = decoder.to(device)
 
     # restore parameters
-    model_dir = '../Models/ClassifierEstimator/osi-mnist'
+    model_dir = '../Models/ClassifierEstimator/osi-mnist/'
     encoder.load_params(model_dir + '/mnist_encoder.pth', device)
     decoder.load_params(model_dir + '/mnist_decoder.pth', device)
 
@@ -323,7 +323,7 @@ def MNIST_SaveTrainingLatentCodes(path: str):
 # L2 instance distance to center / mean L2 distance to center
 def NormalizedClusterLoss(x, center, radius):
     x = x - center
-    return torch.mean(torch.sum(x*x, dim=1) / (radius * radius))
+    return torch.mean(torch.sum(x*x, dim=1))
 
 
 def MNIST_TrainRestrictedAutoEncoder(data_path: str):
@@ -371,10 +371,12 @@ def MNIST_TrainRestrictedAutoEncoder(data_path: str):
             m = m.cpu().detach().numpy()
             centers[idx:idx+batch_size, :] = m[:, :]
         for i in range(n_class):
-            mask = np.expand_dims(labels==i, axis=-1)
+            mask = np.expand_dims(labels == i, axis=-1)
             masked_centers = centers * mask
             cluster_centers[i, :] = np.sum(masked_centers, axis=0) / np.sum(mask)
-            cluster_radius[i] = np.sqrt(np.sum(np.square(masked_centers-cluster_centers[i])) / (np.sum(mask)-1))
+            radius_ = np.sqrt(np.sum(np.square(masked_centers - cluster_centers[i]), axis=-1))
+            cluster_radius[i] = np.sum(mask.squeeze(1) * radius_) / np.sum(mask)
+
         print('explicit memory loss: %6.3f +/- %6.3f' % (cluster_radius.mean(), cluster_radius.std()))
 
         # training
@@ -532,7 +534,7 @@ def MNIST_TestRestrictedAutoEncoder():
         loss_c = NormalizedClusterLoss(m, centers, radius)
         z_r = latent_decoder(m)
 
-        # test auto encoder
+        # # test auto encoder
         # x_r2 = decoder(z_r)
         # x_r1 = decoder(z)
         # im_ = np.concatenate(
@@ -550,13 +552,14 @@ def MNIST_TestRestrictedAutoEncoder():
         running_loss_c += loss_c.item()
         running_loss_r += loss_r.item()
     print('loss=%6.5f loss_c=%6.5f loss_r=%6.5f' %
-          (running_loss/ num_samples,
-           running_loss_c/num_samples,
-           running_loss_r/num_samples))
+          (running_loss/(num_samples/batch_size),
+           running_loss_c/(num_samples/batch_size),
+           running_loss_r/(num_samples/batch_size)))
     '''
 
+
     # test the classifier (explicit memory)
-    batch_size = 16
+    batch_size = 16 # 16
     dataset = load_mnist(is_train=False, batch_size=batch_size)
     num_samples = len(dataset.dataset)
 
@@ -566,12 +569,13 @@ def MNIST_TestRestrictedAutoEncoder():
         x = batch[0].to(device)
         y = batch[1].cpu().detach().numpy()
         z = encoder(x)
-        m = latent_encoder(z).cpu().detach().numpy()
+        m = latent_encoder(z)
+
         dis = np.stack(
             [np.sqrt(
                 np.sum(
                     np.square(
-                        m - cluster_centers[ii]
+                        m.cpu().detach().numpy() - cluster_centers[ii]
                     ), axis=-1
                 )
             ) for ii in range(n_class)],
@@ -581,8 +585,38 @@ def MNIST_TestRestrictedAutoEncoder():
         assert len(ids)==len(y)
         n_corr += np.sum(ids == y)
 
+        # # debug the error prediction
+        # if ids[0]!=y[0]:
+        #     x_r1 = decoder(latent_decoder(m))
+        #     m2 = latent_encoder(encoder(x_r1))
+        #     x_r2 = decoder(latent_decoder(m2))
+        #     m3 = latent_encoder(encoder(x_r2))
+        #     x_r3 = decoder(latent_decoder(m3))
+        #
+        #     dis = np.stack(
+        #         [np.sqrt(
+        #             np.sum(
+        #                 np.square(
+        #                     m3.cpu().detach().numpy() - cluster_centers[ii]
+        #                 ), axis=-1
+        #             )
+        #         ) for ii in range(n_class)],
+        #         axis=0
+        #     )
+        #     ids2 = np.argmin(dis, axis=0)
+        #
+        #     im_ = np.concatenate(
+        #         (x.cpu().detach().numpy()[0],
+        #          x_r1.cpu().detach().numpy()[0],
+        #          x_r2.cpu().detach().numpy()[0],
+        #          x_r3.cpu().detach().numpy()[0]), axis=-1)
+        #     plt.imshow(im_[0])
+        #     plt.title("Pred: %d   Truth: %d   Again: %d" % (ids[0], y[0], ids2[0]))
+        #     plt.show()
+
     acc = n_corr * 1.0 / num_samples
     print('classification accuracy: %6.5f' % acc)
+
 
     print('test finished!')
 
