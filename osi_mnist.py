@@ -488,11 +488,15 @@ def MNIST_TestRestrictedAutoEncoder():
         mask = np.expand_dims(labels==i, axis=-1)
         masked_centers = centers * mask
         cluster_centers[i, :] = np.sum(masked_centers, axis=0) / np.sum(mask)
+        # normalize each variable in multi-variant gaussian distribution
+        sigma = np.sqrt(np.sum(np.square(masked_centers - cluster_centers[i]), axis=0) / np.sum(mask))
+        print(sigma)
+
         radius_ = np.sqrt(np.sum(np.square(masked_centers-cluster_centers[i]), axis=-1))
         cluster_radius[i] = np.sum(mask.squeeze(1) * radius_) / np.sum(mask)
 
-    print(cluster_centers)
-    print(cluster_radius)
+    #print(cluster_centers)
+    #print(cluster_radius)
     print('explicit memory loss: %6.5f +/- %6.5f' % (cluster_radius.mean(), cluster_radius.std()))
 
     '''
