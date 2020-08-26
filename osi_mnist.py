@@ -471,8 +471,9 @@ def MNIST_TestRestrictedAutoEncoder():
     num_samples = len(dataset.dataset)
 
     cluster_centers = np.zeros([n_class, latent_dim], dtype=np.float32)
-    cluster_radius = np.zeros([n_class], dtype=np.float32)
-    centers = np.zeros([num_samples, latent_dim], dtype=np.float32)
+    #cluster_radius = np.zeros([n_class], dtype=np.float32)
+    cluster_radius = np.zeros([n_class, latent_dim], dtype=np.float32)
+    latents = np.zeros([num_samples, latent_dim], dtype=np.float32)
     labels = np.zeros([num_samples], dtype=np.int32)
 
     print('distribution evaluation')
@@ -483,31 +484,31 @@ def MNIST_TestRestrictedAutoEncoder():
         z = encoder(x)
         m = latent_encoder(z)
         m = m.cpu().detach().numpy()
-        centers[idx:idx+batch_size, :] = m[:, :]
+        latents[idx:idx+batch_size, :] = m[:, :]
     for i in range(n_class):
         mask = np.expand_dims(labels==i, axis=-1)
-        masked_centers = centers * mask
-        cluster_centers[i, :] = np.sum(masked_centers, axis=0) / np.sum(mask)
-        # normalize each variable in multi-variant gaussian distribution
-        sigma = np.sqrt(np.sum(np.square(masked_centers - cluster_centers[i]), axis=0) / np.sum(mask))
-        print(sigma)
+        masked_latents = latents * mask
+        cluster_centers[i, :] = np.sum(masked_latents, axis=0) / np.sum(mask)
+        delta = (latents - cluster_centers[i]) * mask
+        cluster_radius[i, :] = np.sqrt(np.sum(np.square(delta), axis=0) / np.sum(mask))
 
-        radius_ = np.sqrt(np.sum(np.square(masked_centers-cluster_centers[i]), axis=-1))
-        cluster_radius[i] = np.sum(mask.squeeze(1) * radius_) / np.sum(mask)
+        radius_ = np.sqrt(np.sum(np.square(latents - cluster_centers[i]), axis=-1))
+        radius_ = np.sum(mask.squeeze(1) * radius_) / np.sum(mask)
+        print("%6.5f =?= %6.5f" % (np.sqrt(np.sum(np.square(cluster_radius[i]))), radius_))
 
     #print(cluster_centers)
     #print(cluster_radius)
-    print('explicit memory loss: %6.5f +/- %6.5f' % (cluster_radius.mean(), cluster_radius.std()))
+    #print('explicit memory loss: %6.5f +/- %6.5f' % (cluster_radius.mean(), cluster_radius.std()))
 
-    '''
+
     # test the generator(explicit memory)
     for ii in range(n_class):
         for _ in np.arange(10):
-            ratio = 0.5 * cluster_radius[ii]
+            w = cluster_radius[ii]
             noise = np.random.rand(8) - 0.5
             noise_norm = np.sqrt(np.sum(np.square(noise)))
             noise = noise / noise_norm
-            sample = cluster_centers[ii] + ratio * noise
+            sample = cluster_centers[ii] + w * noise
             m_c = torch.Tensor(sample).to(device)
             m_c = torch.unsqueeze(m_c, dim=0)
             z_c = latent_decoder(m_c)
@@ -515,7 +516,7 @@ def MNIST_TestRestrictedAutoEncoder():
             im_ = x_c.cpu().detach().numpy()[0]
             plt.imshow(im_[0])
             plt.show()
-    '''
+    exit(0)
 
     '''
     # test the latent auto encoder
