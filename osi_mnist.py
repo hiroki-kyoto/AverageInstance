@@ -450,7 +450,7 @@ def MNIST_TestRestrictedAutoEncoder():
     latent_decoder = MNIST_LatentEncoder().to(device)
 
     # restore parameters
-    model_dir = '../Models/ClassifierEstimator/osi-mnist'
+    model_dir = '../Models/ClassifierEstimator/osi-mnist/v1'
     encoder.load_params(model_dir + '/mnist_encoder.pth', device)
     decoder.load_params(model_dir + '/mnist_decoder.pth', device)
     latent_encoder.load_params(model_dir + '/mnist_latent_encoder.pth', device)
@@ -492,15 +492,15 @@ def MNIST_TestRestrictedAutoEncoder():
         delta = (latents - cluster_centers[i]) * mask
         cluster_radius[i, :] = np.sqrt(np.sum(np.square(delta), axis=0) / np.sum(mask))
 
-        radius_ = np.sqrt(np.sum(np.square(latents - cluster_centers[i]), axis=-1))
-        radius_ = np.sum(mask.squeeze(1) * radius_) / np.sum(mask)
-        print("%6.5f =?= %6.5f" % (np.sqrt(np.sum(np.square(cluster_radius[i]))), radius_))
+        #radius_ = np.sqrt(np.sum(np.square(latents - cluster_centers[i]), axis=-1))
+        #radius_ = np.sum(mask.squeeze(1) * radius_) / np.sum(mask)
+        #print("%6.5f =?= %6.5f" % (np.sqrt(np.sum(np.square(cluster_radius[i]))), radius_))
 
     #print(cluster_centers)
     #print(cluster_radius)
     #print('explicit memory loss: %6.5f +/- %6.5f' % (cluster_radius.mean(), cluster_radius.std()))
 
-
+    '''
     # test the generator(explicit memory)
     for ii in range(n_class):
         for _ in np.arange(10):
@@ -516,7 +516,7 @@ def MNIST_TestRestrictedAutoEncoder():
             im_ = x_c.cpu().detach().numpy()[0]
             plt.imshow(im_[0])
             plt.show()
-    exit(0)
+    '''
 
     '''
     # test the latent auto encoder
@@ -565,7 +565,7 @@ def MNIST_TestRestrictedAutoEncoder():
 
     # test the classifier (explicit memory)
     batch_size = 16 # 16
-    dataset = load_mnist(is_train=False, batch_size=batch_size)
+    dataset = load_mnist(is_train=True, batch_size=batch_size)
     num_samples = len(dataset.dataset)
 
     n_corr = 0
@@ -580,7 +580,7 @@ def MNIST_TestRestrictedAutoEncoder():
             [np.sqrt(
                 np.sum(
                     np.square(
-                        m.cpu().detach().numpy() - cluster_centers[ii]
+                        (m.cpu().detach().numpy() - cluster_centers[ii]) / cluster_radius[ii]
                     ), axis=-1
                 )
             ) for ii in range(n_class)],
@@ -602,7 +602,7 @@ def MNIST_TestRestrictedAutoEncoder():
         #         [np.sqrt(
         #             np.sum(
         #                 np.square(
-        #                     m3.cpu().detach().numpy() - cluster_centers[ii]
+        #                     (m3.cpu().detach().numpy() - cluster_centers[ii]) / cluster_radius[ii]
         #                 ), axis=-1
         #             )
         #         ) for ii in range(n_class)],
