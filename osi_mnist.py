@@ -450,7 +450,7 @@ def MNIST_TestRestrictedAutoEncoder():
     latent_decoder = MNIST_LatentEncoder().to(device)
 
     # restore parameters
-    model_dir = '../Models/ClassifierEstimator/osi-mnist/v1'
+    model_dir = '../Models/ClassifierEstimator/osi-mnist/'
     encoder.load_params(model_dir + '/mnist_encoder.pth', device)
     decoder.load_params(model_dir + '/mnist_decoder.pth', device)
     latent_encoder.load_params(model_dir + '/mnist_latent_encoder.pth', device)
@@ -564,8 +564,8 @@ def MNIST_TestRestrictedAutoEncoder():
 
 
     # test the classifier (explicit memory)
-    batch_size = 16 # 16
-    dataset = load_mnist(is_train=True, batch_size=batch_size)
+    batch_size = 1 # 16
+    dataset = load_mnist(is_train=False, batch_size=batch_size)
     num_samples = len(dataset.dataset)
 
     n_corr = 0
@@ -576,39 +576,34 @@ def MNIST_TestRestrictedAutoEncoder():
         z = encoder(x)
         m = latent_encoder(z)
 
-        dis = np.stack(
-            [np.sqrt(
-                np.sum(
-                    np.square(
-                        (m.cpu().detach().numpy() - cluster_centers[ii]) / cluster_radius[ii]
-                    ), axis=-1
-                )
-            ) for ii in range(n_class)],
-            axis=0
-        )
-        ids = np.argmin(dis, axis=0)
+        dis = np.zeros([batch_size, n_class])
+        m_ = m.cpu().detach().numpy()
+        # dimension: [batch_size, n_class, latent_dim]
+        for ii in range(batch_size):
+            for jj in range(n_class):
+                dis[ii, jj] = np.sum(np.log(cluster_radius[jj]) +
+                                      np.square((m_[ii] - cluster_centers[jj]) / cluster_radius[jj]))
+        ids = np.argmin(dis, axis=-1)
+
         assert len(ids)==len(y)
         n_corr += np.sum(ids == y)
 
         # # debug the error prediction
         # if ids[0]!=y[0]:
-        #     x_r1 = decoder(latent_decoder(m))
-        #     m2 = latent_encoder(encoder(x_r1))
-        #     x_r2 = decoder(latent_decoder(m2))
-        #     m3 = latent_encoder(encoder(x_r2))
-        #     x_r3 = decoder(latent_decoder(m3))
+        #     x_r1 = decoder(z)
+        #     z_r2 = latent_decoder(m)
+        #     x_r2 = decoder(z_r2)
+        #     m2 = latent_encoder(z_r2)
+        #     x_r3 = decoder(latent_decoder(m2))
         #
-        #     dis = np.stack(
-        #         [np.sqrt(
-        #             np.sum(
-        #                 np.square(
-        #                     (m3.cpu().detach().numpy() - cluster_centers[ii]) / cluster_radius[ii]
-        #                 ), axis=-1
-        #             )
-        #         ) for ii in range(n_class)],
-        #         axis=0
-        #     )
-        #     ids2 = np.argmin(dis, axis=0)
+        #     dis = np.zeros([batch_size, n_class])
+        #     m_ = m2.cpu().detach().numpy()
+        #     # dimension: [batch_size, n_class, latent_dim]
+        #     for ii in range(batch_size):
+        #         for jj in range(n_class):
+        #             dis[ii, jj] = np.sum(np.log(cluster_radius[jj]) +
+        #                                  np.square((m_[ii] - cluster_centers[jj]) / cluster_radius[jj]))
+        #     ids2 = np.argmin(dis, axis=-1)
         #
         #     im_ = np.concatenate(
         #         (x.cpu().detach().numpy()[0],
