@@ -159,7 +159,7 @@ class MNIST_LatentDecoder(nn.Module):
 
     def load_params(self, model_path, device):
         state_dict = torch.load(model_path, map_location=device)
-        self.mobilenet.load_state_dict(state_dict)
+        self.load_state_dict(state_dict)
 
 
 def MNIST_TrainAutoEncoder():
@@ -320,10 +320,20 @@ def MNIST_SaveTrainingLatentCodes(path: str):
 
 
 # normalized clustering loss
-# L2 instance distance to center / mean L2 distance to center
-def NormalizedClusterLoss(x, center, radius):
-    x = x - center
-    return torch.mean(torch.sum(x*x, dim=1))
+def NormalizedClusterLoss_v1(x, centers, labels, levels):
+    assert len(x.shape) == 2
+    x = (x - centers[labels]) / levels
+    return torch.mean(torch.sum(x**2, dim=-1))
+
+
+def NormalizedClusterLoss_v2(loss_func, x, centers, labels, levels):
+    assert len(x.shape) == 2
+    centers = torch.stack([centers]*x.shape[0], dim=0)
+    x = x.unsqueeze(1)
+    x = (x - centers) / levels
+    pred = -torch.sum(x**2, dim=-1)
+    gt = torch.LongTensor(labels)
+    return loss_func(pred, gt)
 
 
 def MNIST_TrainRestrictedAutoEncoder(data_path: str):
@@ -332,12 +342,14 @@ def MNIST_TrainRestrictedAutoEncoder(data_path: str):
     """
     # build model
     encoder = MNIST_LatentEncoder()
-    decoder = MNIST_LatentEncoder()
+    decoder = MNIST_LatentDecoder()
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('train_device:{}'.format(device.type))
     encoder = encoder.to(device)
     decoder = decoder.to(device)
+
+    loss_func = nn.CrossEntropyLoss()
 
     opt_enc = torch.optim.Adam(encoder.parameters(), lr=1E-4)
     opt_dec = torch.optim.Adam(decoder.parameters(), lr=1E-4)
@@ -353,31 +365,42 @@ def MNIST_TrainRestrictedAutoEncoder(data_path: str):
     decoder.train()
     num_epochs = 10000
     num_samples = labels.shape[0]
-    save_n_epoch = 10
+    save_n_epoch = 100
 
     # explicit memory
     n_class = 10
-    latent_dim = 8
+    m_dim = 8
     batch_size = 32
-    cluster_centers = np.zeros([n_class, latent_dim], dtype=np.float32)
-    cluster_radius = np.zeros([n_class], dtype=np.float32)
-    centers = np.zeros([num_samples, latent_dim], dtype=np.float32)
+    # the distribution of clustering residual
+    latents2 = np.zeros([num_samples, m_dim], dtype=np.float32) # secondary latents
+    cluster_centers = np.zeros([n_class, m_dim], dtype=np.float32)
+    cluster_radius = np.zeros([n_class, m_dim], dtype=np.float32)
 
     for epoch in range(num_epochs):
         print('distribution evaluation')
+        m_level = np.zeros([m_dim], dtype=np.float32)
+        z_level = np.zeros([latents.shape[-1]], dtype=np.float32)
         for i in range(num_samples//batch_size):
             idx = i*batch_size
-            m = encoder(latents[idx:idx+batch_size, :])
+            z = latents[idx:idx+batch_size, :]
+            m = encoder(z)
+            z = z.cpu().detach().numpy()
+            z_level += np.sum(np.abs(z), axis=0)
             m = m.cpu().detach().numpy()
-            centers[idx:idx+batch_size, :] = m[:, :]
+            latents2[idx:idx+batch_size, :] = m[:, :]
+            m_level += np.sum(np.abs(m), axis=0)
         for i in range(n_class):
             mask = np.expand_dims(labels == i, axis=-1)
-            masked_centers = centers * mask
-            cluster_centers[i, :] = np.sum(masked_centers, axis=0) / np.sum(mask)
-            radius_ = np.sqrt(np.sum(np.square(masked_centers - cluster_centers[i]), axis=-1))
-            cluster_radius[i] = np.sum(mask.squeeze(1) * radius_) / np.sum(mask)
+            masked_latents2 = latents2 * mask
+            cluster_centers[i, :] = np.sum(masked_latents2, axis=0) / np.sum(mask)
+            delta = (latents2 - cluster_centers[i]) * mask
+            cluster_radius[i, :] = np.sqrt(np.sum(np.square(delta), axis=0) / np.sum(mask))
 
-        print('explicit memory loss: %6.3f +/- %6.3f' % (cluster_radius.mean(), cluster_radius.std()))
+        z_level = z_level / num_samples
+        m_level = m_level / num_samples
+
+        print('z level: %s' % z_level)
+        print('m level: %s' % m_level)
 
         # training
         running_loss = 0.0
@@ -388,21 +411,25 @@ def MNIST_TrainRestrictedAutoEncoder(data_path: str):
         seq = np.random.permutation(num_samples)
         latents_perm = latents[seq]
         labels_perm = labels[seq]
-        centers_perm = torch.Tensor(cluster_centers[labels_perm])
-        radius_perm = torch.Tensor(cluster_radius[labels_perm])
-        centers_perm = centers_perm.to(device)
-        radius_perm = radius_perm.to(device)
+
+        #centers_perm = torch.Tensor(cluster_centers[labels_perm]).to(device)
+        centers =  torch.Tensor(cluster_centers).to(device)
+        radius = torch.Tensor(cluster_radius).to(device)
+
+        z_level = torch.Tensor(z_level).to(device)
+        m_level = torch.Tensor(m_level).to(device)
 
         for i in range(num_samples // batch_size):
             # forward
             idx = i * batch_size
             z = latents_perm[idx:idx+batch_size, :]
             m = encoder(z)
-            loss_c = NormalizedClusterLoss(
-                m, centers_perm[idx:idx+batch_size], radius_perm[idx:idx+batch_size])
+            #loss_c = NormalizedClusterLoss_v1(m, centers, labels_perm[idx:idx+batch_size], m_level)
+            loss_c = NormalizedClusterLoss_v2(loss_func, m, centers, labels_perm[idx:idx+batch_size], m_level)
+
             z_r = decoder(m)
-            loss_r = z_r - z
-            loss_r = torch.mean(torch.sum(loss_r*loss_r, dim=1))
+            loss_r = (z_r - z)/z_level
+            loss_r = torch.mean(torch.sum(loss_r*loss_r, dim=-1))
             loss = loss_c + loss_r
 
             # backward
@@ -450,7 +477,7 @@ def MNIST_TestRestrictedAutoEncoder():
     latent_decoder = MNIST_LatentEncoder().to(device)
 
     # restore parameters
-    model_dir = '../Models/ClassifierEstimator/osi-mnist/'
+    model_dir = '../Models/ClassifierEstimator/osi-mnist/v3'
     encoder.load_params(model_dir + '/mnist_encoder.pth', device)
     decoder.load_params(model_dir + '/mnist_decoder.pth', device)
     latent_encoder.load_params(model_dir + '/mnist_latent_encoder.pth', device)
@@ -464,17 +491,19 @@ def MNIST_TestRestrictedAutoEncoder():
 
     # explicit memory
     n_class = 10
-    latent_dim = 8
+    m_dim = 8
+    z_dim = 8
 
     batch_size = 16
     dataset = load_mnist(is_train=True, batch_size=batch_size)
     num_samples = len(dataset.dataset)
 
-    cluster_centers = np.zeros([n_class, latent_dim], dtype=np.float32)
-    #cluster_radius = np.zeros([n_class], dtype=np.float32)
-    cluster_radius = np.zeros([n_class, latent_dim], dtype=np.float32)
-    latents = np.zeros([num_samples, latent_dim], dtype=np.float32)
+    cluster_centers = np.zeros([n_class, m_dim], dtype=np.float32)
+    cluster_radius = np.zeros([n_class, m_dim], dtype=np.float32)
+    latents = np.zeros([num_samples, m_dim], dtype=np.float32)
     labels = np.zeros([num_samples], dtype=np.int32)
+    m_level = np.zeros([m_dim], dtype=np.float32)
+    z_level = np.zeros([z_dim], dtype=np.float32)
 
     print('distribution evaluation')
     for i, batch in enumerate(dataset):
@@ -484,6 +513,8 @@ def MNIST_TestRestrictedAutoEncoder():
         z = encoder(x)
         m = latent_encoder(z)
         m = m.cpu().detach().numpy()
+        z_level += np.sum(np.abs(z.cpu().detach().numpy()), axis=0)
+        m_level += np.sum(np.abs(m), axis=0)
         latents[idx:idx+batch_size, :] = m[:, :]
     for i in range(n_class):
         mask = np.expand_dims(labels==i, axis=-1)
@@ -492,13 +523,10 @@ def MNIST_TestRestrictedAutoEncoder():
         delta = (latents - cluster_centers[i]) * mask
         cluster_radius[i, :] = np.sqrt(np.sum(np.square(delta), axis=0) / np.sum(mask))
 
-        #radius_ = np.sqrt(np.sum(np.square(latents - cluster_centers[i]), axis=-1))
-        #radius_ = np.sum(mask.squeeze(1) * radius_) / np.sum(mask)
-        #print("%6.5f =?= %6.5f" % (np.sqrt(np.sum(np.square(cluster_radius[i]))), radius_))
-
+    z_level = z_level / num_samples
+    m_level = m_level / num_samples
     #print(cluster_centers)
     #print(cluster_radius)
-    #print('explicit memory loss: %6.5f +/- %6.5f' % (cluster_radius.mean(), cluster_radius.std()))
 
     '''
     # test the generator(explicit memory)
@@ -516,7 +544,9 @@ def MNIST_TestRestrictedAutoEncoder():
             im_ = x_c.cpu().detach().numpy()[0]
             plt.imshow(im_[0])
             plt.show()
+    exit(0)
     '''
+
 
     '''
     # test the latent auto encoder
@@ -528,6 +558,8 @@ def MNIST_TestRestrictedAutoEncoder():
     running_loss_c = 0.0
     running_loss_r = 0.0
 
+    m_level = torch.Tensor(m_level).to(device)
+    z_level = torch.Tensor(z_level).to(device)
     for i, batch in enumerate(dataset):
         # forward
         x = batch[0].to(device)
@@ -535,8 +567,7 @@ def MNIST_TestRestrictedAutoEncoder():
         z = encoder(x)
         m = latent_encoder(z)
         centers = torch.Tensor(cluster_centers[y]).to(device)
-        radius = torch.Tensor(cluster_radius[y]).to(device)
-        loss_c = NormalizedClusterLoss(m, centers, radius)
+        loss_c = NormalizedClusterLoss(m, centers, m_level)
         z_r = latent_decoder(m)
 
         # # test auto encoder
@@ -549,7 +580,7 @@ def MNIST_TestRestrictedAutoEncoder():
         # plt.imshow(im_[0])
         # plt.show()
 
-        loss_r = z_r - z
+        loss_r = (z_r - z) / z_level
         loss_r = torch.mean(torch.sum(loss_r*loss_r, dim=1))
         loss = loss_c + loss_r
 
@@ -560,15 +591,16 @@ def MNIST_TestRestrictedAutoEncoder():
           (running_loss/(num_samples/batch_size),
            running_loss_c/(num_samples/batch_size),
            running_loss_r/(num_samples/batch_size)))
+    exit(0)
     '''
 
-
     # test the classifier (explicit memory)
-    batch_size = 1 # 16
+    batch_size = 16
     dataset = load_mnist(is_train=False, batch_size=batch_size)
     num_samples = len(dataset.dataset)
 
-    n_corr = 0
+    n_corr = 0 # number of correct prediction
+    n_conf = 0 # number of confident prediction
     for i, batch in enumerate(dataset):
         # forward
         x = batch[0].to(device)
@@ -579,14 +611,22 @@ def MNIST_TestRestrictedAutoEncoder():
         dis = np.zeros([batch_size, n_class])
         m_ = m.cpu().detach().numpy()
         # dimension: [batch_size, n_class, latent_dim]
-        for ii in range(batch_size):
-            for jj in range(n_class):
-                dis[ii, jj] = np.sum(np.log(cluster_radius[jj]) +
-                                      np.square((m_[ii] - cluster_centers[jj]) / cluster_radius[jj]))
+        centers = np.stack([cluster_centers]*batch_size)
+        radius = np.stack([cluster_radius]*batch_size)
+        m_ = np.expand_dims(m_, axis=1)
+        # for ii in range(batch_size):
+        #     for jj in range(n_class):
+        #         dis[ii, jj] = np.sum(
+        #             np.log(cluster_radius[jj]) +
+        #             np.square((m_[ii] - cluster_centers[jj]) / cluster_radius[jj]))
+        dis = np.sum(np.log(radius) + np.square((m_ - centers)/radius), axis=-1)
         ids = np.argmin(dis, axis=-1)
+        dis_3sigma = np.sum(np.log(cluster_radius) + np.square(1), axis=-1)
 
         assert len(ids)==len(y)
-        n_corr += np.sum(ids == y)
+        mask_conf = dis[np.arange(batch_size), ids] < dis_3sigma[ids]
+        n_corr += np.sum((ids == y)*mask_conf)
+        n_conf += np.sum(mask_conf)
 
         # # debug the error prediction
         # if ids[0]!=y[0]:
@@ -614,7 +654,8 @@ def MNIST_TestRestrictedAutoEncoder():
         #     plt.title("Pred: %d   Truth: %d   Again: %d" % (ids[0], y[0], ids2[0]))
         #     plt.show()
 
-    acc = n_corr * 1.0 / num_samples
+    acc = n_corr * 1.0 / n_conf
+    print('confident ratio: %6.5f' % (n_conf/num_samples))
     print('classification accuracy: %6.5f' % acc)
 
 
