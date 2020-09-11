@@ -1,3 +1,4 @@
+####################################
 # the 1st training
 # AE
 train error: 0.04273 +/- 0.01887
@@ -5,15 +6,11 @@ test error: 0.04268 +/- 0.01880
 
 # latent code
 #training
-radius error: 0.01584 +/- 0.00243
-loss=0.07086 loss_c=0.07085 loss_r=0.00001
 classification accuracy: 0.899
 
 # test
-radius error: 0.01550 +/- 0.00245
-loss=0.06818 loss_c=0.06813 loss_r=0.00005
 classification accuracy: 0.907
-####################################################
+####################################
 # the 2nd training
 # AE
 train error: 0.03704 +/- 0.01757
@@ -21,21 +18,25 @@ test error: 0.03732 +/- 0.01793
 
 # latent code
 # training
-radius error: 0.00587 +/- 0.00122
-loss=0.00008 loss_c=0.00004 loss_r=0.00004
-classification accuracy: 0.91955
+classification accuracy: 0.920
 
 # test
-radius error: 0.00577 +/- 0.00124
-loss=0.00010 loss_c=0.00004 loss_r=0.00006
-classification accuracy: 0.92270
-
-#####################################
+classification accuracy: 0.923
+####################################
 the 3rd training
 # training
-classification accuracy: 0.92055
+classification accuracy: 0.921
 loss=0.00108 loss_c=0.00029 loss_r=0.00079
 
 # test
-classification accuracy: 0.92470
+classification accuracy: 0.925
 loss=0.00117 loss_c=0.00029 loss_r=0.00088
+
+####################################
+the 4th training
+# training
+classification accuracy: 0.942
+
+# test
+classification accuracy: 0.940
+ 
