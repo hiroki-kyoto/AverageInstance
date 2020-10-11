@@ -4,6 +4,9 @@ from tkinter.filedialog import *
 from PIL import Image, ImageTk
 import cv2 as cv
 
+base_w = 672
+base_h = 480
+
 class Application(tk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
@@ -42,7 +45,7 @@ class Application(tk.Frame):
         self.frame_input = Frame(self, relief=RAISED, borderwidth=1)
         self.frame_input.pack(fill=BOTH, expand=True, side='left')
 
-        self.im_main = Image.fromarray(np.zeros([480, 672], dtype=np.uint8))
+        self.im_main = Image.fromarray(np.zeros([base_h, base_w], dtype=np.uint8))
         self.im_main_r = self.im_main.resize((336, 240))
         self.tk_im_main = ImageTk.PhotoImage(self.im_main_r)
         self.canvas_main = tk.Label(self.frame_input, image=self.tk_im_main)
@@ -51,7 +54,7 @@ class Application(tk.Frame):
         self.caption_main = tk.Label(self.frame_input, text='Main View', font="Century\ Schoolbook 12 bold",)
         self.caption_main.pack(side='top')
 
-        self.im_aux = Image.fromarray(np.zeros([480, 672], dtype=np.uint8))
+        self.im_aux = Image.fromarray(np.zeros([base_h, base_w], dtype=np.uint8))
         self.im_aux_r = self.im_aux.resize((336, 240))
         self.tk_im_aux = ImageTk.PhotoImage(self.im_aux_r)
         self.canvas_aux = tk.Label(self.frame_input, image=self.tk_im_aux)
@@ -63,7 +66,7 @@ class Application(tk.Frame):
         self.frame_output = Frame(self, relief=RAISED, borderwidth=1)
         self.frame_output.pack(fill=BOTH, expand=True, side='right')
 
-        self.im_disp_bm = Image.fromarray(np.zeros([480, 672], dtype=np.uint8))
+        self.im_disp_bm = Image.fromarray(np.zeros([base_h, base_w], dtype=np.uint8))
         self.im_disp_bm_r = self.im_disp_bm.resize((336, 240))
         print(self.im_disp_bm.size)
         self.tk_im_disp_bm = ImageTk.PhotoImage(self.im_disp_bm_r)
@@ -73,7 +76,7 @@ class Application(tk.Frame):
         self.caption_bm = tk.Label(self.frame_output, text='BM Disparity', font="Century\ Schoolbook 12 bold", )
         self.caption_bm.pack(side='top')
 
-        self.im_disp_sgbm = Image.fromarray(np.zeros([480, 672], dtype=np.uint8))
+        self.im_disp_sgbm = Image.fromarray(np.zeros([base_h, base_w], dtype=np.uint8))
         self.im_disp_sgbm_r = self.im_disp_sgbm.resize((336, 240))
         self.tk_im_disp_sgbm = ImageTk.PhotoImage(self.im_disp_sgbm_r)
         self.canvas_disp_sgbm = tk.Label(self.frame_output, image=self.tk_im_disp_sgbm)
@@ -198,8 +201,9 @@ class Application(tk.Frame):
         im_L = np.array(main_)
         im_R = np.array(aux_)
         self.max_disp = 32
-        self.win_size = 15
+        self.win_size = 9
         stereo = cv.StereoBM_create(numDisparities=self.max_disp, blockSize=self.win_size)
+        stereo.setUniquenessRatio(30)
         disp_s16 = stereo.compute(im_L, im_R)
         disp_s16 = np.maximum(disp_s16, 0)
         disp_f32 = np.array(disp_s16, dtype=np.float32)
@@ -244,7 +248,7 @@ class Application(tk.Frame):
             P2=96*self.win_size*self.win_size,
             uniquenessRatio=30,
             preFilterCap=63,
-            mode=0)
+            mode=3)
         disp_s16 = stereo.compute(im_L, im_R)
         disp_s16 = np.maximum(disp_s16, 0)
         disp_f32 = np.array(disp_s16, dtype=np.float32)
@@ -334,18 +338,12 @@ class Application(tk.Frame):
             self.bm_trace_sum = self.bm_trace_sum + np.abs((np.array(self.im_disp_bm) - self.last_disp_bm))
             self.sgbm_trace_sum = self.sgbm_trace_sum + np.abs((np.array(self.im_disp_sgbm) - self.last_disp_sgbm))
         else:
-            self.bm_trace_sum = np.zeros([480, 672], dtype=np.int32)
-            self.sgbm_trace_sum = np.zeros([480, 672], dtype=np.int32)
-            self.im_bm_trace_mean = Image.fromarray(np.zeros([480, 672], dtype=np.uint8))
-            self.im_sgbm_trace_mean = Image.fromarray(np.zeros([480, 672], dtype=np.uint8))
+            self.bm_trace_sum = np.zeros([base_h, base_w], dtype=np.int32)
+            self.sgbm_trace_sum = np.zeros([base_h, base_w], dtype=np.int32)
+            self.im_bm_trace_mean = Image.fromarray(np.zeros([base_h, base_w], dtype=np.uint8))
+            self.im_sgbm_trace_mean = Image.fromarray(np.zeros([base_h, base_w], dtype=np.uint8))
         # display the trace state
         if calc_delta:
-            # self.im_bm_trace_mean = Image.fromarray(
-            #     np.array(self.bm_trace_sum/int(self.bar_val.get()),
-            #              dtype=np.uint8))
-            # self.im_sgbm_trace_mean = Image.fromarray(
-            #     np.array(self.sgbm_trace_sum / int(self.bar_val.get()),
-            #              dtype=np.uint8))
             self.im_bm_trace_mean = Image.fromarray(np.array(np.minimum(self.bm_trace_sum, 255), np.uint8))
             self.im_sgbm_trace_mean = Image.fromarray(np.array(np.minimum(self.sgbm_trace_sum, 255), np.uint8))
         # update UI
