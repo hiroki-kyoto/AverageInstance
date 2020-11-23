@@ -1,7 +1,18 @@
-# ClassifierEstimator
+# Average Instance
 
-#### 介绍
-分类器评估器：属于解释性AI的一个探索，通过对输入样本在已学习的样本空间中进行分解和重组，
-观测该样本和已学习的样本分布的服从度（当该样本采样自已学习的样本分布时，则服从度高，
-否则服从度低），据此，如果从训练样本空间以外（比如不同的数据集不同的领域）采样输入，
-则评估器会评估该样本的服从度，该服从度直接视为分类器输出结果的置信度。
+#### Description
+Average Instance is defined as the average look of what a concept can
+be instantiated as. Especially, the visual concepts.
+ 
+This research aims to contribute to open-set recognition, however,
+it also demonstrate good ability to generate class specified random
+samples with a big surprise. 
+In the model proposed along with this idea, open-set classifier and
+generative model are simultaneously integrated.
+As an out-of-plan bonus, average instance is also proved to be
+robust against adversarial attacks.
+Besides, since average instances are learnt by clustering, they also
+support a semi-supervised learning style.
+
+<font color='red'>since it does not imply anything, 
+we gave up on it</font>

@@ -680,10 +680,10 @@ def MNIST_TestRestrictedAutoEncoder():
     print(cluster_centers)
     print(cluster_radius)
 
-    '''
+
     # test the generator(explicit memory)
     for ii in range(n_class):
-        for _ in np.arange(1):
+        for jj in np.arange(7):
             w = cluster_radius[ii] * 0.02
             noise = np.random.rand(8) - 0.5
             noise_norm = np.sqrt(np.sum(np.square(noise)))
@@ -697,9 +697,9 @@ def MNIST_TestRestrictedAutoEncoder():
             im_ = 255 - array2image(im_[0])
             #plt.imshow(im_)
             #plt.show()
-            Image.fromarray(im_).save('./test/osi-mnist/%d.png' % ii)
+            Image.fromarray(im_).save('./test/osi-mnist/%d-%d.png' % (ii, jj))
     exit(0)
-    '''
+
 
 
     '''
