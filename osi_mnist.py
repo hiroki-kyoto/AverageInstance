@@ -226,7 +226,7 @@ def MNIST_TrainAutoEncoder():
                 running_loss_r = 0.0
         # save models
         print('saving models...')
-        model_dir = '../Models/ClassifierEstimator/osi-mnist'
+        model_dir = './models'
         torch.save(encoder.state_dict(), model_dir + '/mnist_encoder.pth')
         torch.save(decoder.state_dict(), model_dir + '/mnist_decoder.pth')
         print('models saved at epoch #%d' % (epoch + 1))
@@ -247,7 +247,7 @@ def MNIST_TestAutoEncoder():
     decoder = decoder.to(device)
 
     # restore parameters
-    model_dir = '../Models/ClassifierEstimator/osi-mnist/'
+    model_dir = './models'
     encoder.load_params(model_dir + '/mnist_encoder.pth', device)
     decoder.load_params(model_dir + '/mnist_decoder.pth', device)
 
@@ -306,7 +306,7 @@ def MNIST_SaveTrainingLatentCodes(path: str):
     encoder.to(device)
 
     # restore parameters
-    model_dir = '../Models/ClassifierEstimator/osi-mnist'
+    model_dir = './models'
     encoder.load_params(model_dir + '/mnist_encoder.pth', device)
 
     batch_size = 16
@@ -481,7 +481,7 @@ def MNIST_TrainRestrictedAutoEncoder_v1(data_path: str):
         # save models
         if (epoch + 1) % save_n_epoch == 0:
             print('saving models...')
-            model_dir = '../Models/ClassifierEstimator/osi-mnist'
+            model_dir = './models'
             torch.save(encoder.state_dict(), model_dir + '/mnist_latent_encoder.pth')
             torch.save(decoder.state_dict(), model_dir + '/mnist_latent_decoder.pth')
             print('models saved at epoch #%d' % (epoch + 1))
@@ -503,7 +503,7 @@ def MNIST_TrainRestrictedAutoEncoder_v2(data_path: str):
     decoder = decoder.to(device)
 
     # restore the training session
-    model_dir = '../Models/ClassifierEstimator/osi-mnist'
+    model_dir = './models'
 
     opt_enc = torch.optim.Adam(encoder.parameters(), lr=1E-4)
     opt_dec = torch.optim.Adam(decoder.parameters(), lr=1E-4)
@@ -629,7 +629,7 @@ def MNIST_TestRestrictedAutoEncoder():
     latent_decoder = MNIST_LatentDecoder().to(device)
 
     # restore parameters
-    model_dir = '../Models/ClassifierEstimator/osi-mnist'
+    model_dir = './models'
     encoder.load_params(model_dir + '/mnist_encoder.pth', device)
     decoder.load_params(model_dir + '/mnist_decoder.pth', device)
     latent_encoder.load_params(model_dir + '/mnist_latent_encoder.pth', device)
@@ -749,7 +749,7 @@ def MNIST_TestRestrictedAutoEncoder():
     exit(0)
     '''
 
-    # test the classifier (explicit memory)
+    # test the classifier (average instance)
     batch_size = 16
     dataset = load_mnist(is_train=True, batch_size=batch_size)
     num_samples = len(dataset.dataset)
@@ -820,7 +820,7 @@ if __name__ == '__main__':
     #MNIST_TrainAutoEncoder()
     #MNIST_TestAutoEncoder()
 
-    latent_path = '../Datasets/MNIST/latent/latent_codes.npy'
+    #latent_path = './average_instances/latent_codes.npy'
     #MNIST_SaveTrainingLatentCodes(latent_path)
     #MNIST_TrainRestrictedAutoEncoder_v1(latent_path)
     #MNIST_TestRestrictedAutoEncoder()

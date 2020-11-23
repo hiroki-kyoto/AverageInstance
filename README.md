@@ -32,6 +32,11 @@ task-incremental learning.
 in `osi_mnist.py`. Classification performances run by different
 hyper-parameters are logged in `./test/osi-mnist/AE.txt`. The best
 reported is as `94.0%`, which has not reached the level of SOTA.
+4. To reproduce our reported results, please use pretrained models
+stored in path `./models/`. They are in pytorch flavour. Besides,
+you'll be suggested to download MNIST dataset into path 
+`../Datasets/MNIST/`, or can simply use latent code stored in
+`./average_instances/` to generate unseen samples of MNIST.
 
 ### Future Direction
 1. Figure out the reason behind the gap between softmax-based classifier
